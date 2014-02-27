@@ -10,7 +10,37 @@ dbQuery.connectionParameters = 'postgres://'+ config.db.user + ':' + config.db.p
 function property(req, res, next) {
   var query = req.query;
   var address = query.address;
-  geocoder.geocode(address, function(err, result) {
+
+  if (address !== undefined) {
+    getByAddress(address, res);
+  } else {
+    //get all
+    res.send("getting all, eventually")
+  }
+};
+
+function propertyById(req, res, next) {
+    var blklot = req.params.blklot;
+    //todo: move to db class
+    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text", 
+      [blklot],
+      function(err, query_rows, results) {
+        console.log(query_rows);
+        //todo: check for result
+        var property = {};
+        property.id = blklot;
+        var addresses = query_rows.map( function(row) {
+            return row.address;
+          });
+        property.addresses = addresses;
+        property.lat = query_rows[0].latitude;
+        property.lon = query_rows[0].longitude;
+        res.send(property);
+       });
+};
+
+function getByAddress(address, res) {
+    geocoder.geocode(address, function(err, result) {
     var streetNumber = result.results[0].address_components[0].short_name;
     var streetName = result.results[0].address_components[1].short_name;
 
@@ -18,11 +48,13 @@ function property(req, res, next) {
     console.log(streetName);
 
     //todo: move to db class
-    dbQuery("SELECT * FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
+    dbQuery("SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
       [streetName.toUpperCase().trim(), streetNumber.trim()],
       function(err, query_rows, results) {
         console.log(query_rows);
-        res.send(query_rows);
+        res.send(query_rows.map( function(row) {
+            return row.blk_lot;
+          }));
        });
     },{"components":"locality:San Francisco"}
   );
@@ -31,7 +63,8 @@ function property(req, res, next) {
 var server = restify.createServer();
 server.use(restify.queryParser());
 
-server.get('/property', property);
+server.get('/properties', property);
+server.get('/properties/:blklot', propertyById);
 
 server.listen(8080, function() {
   console.log('%s listening at %s', server.name, server.url);
