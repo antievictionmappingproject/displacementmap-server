@@ -2,6 +2,7 @@ displacementmap-server
 ======================
 api format: 
 evictor:
+```
 {
 	label: string
 	groups/owners: ids
@@ -9,8 +10,10 @@ evictor:
 	links : [{label: string, url: string}]
 	evictions: [{id}]
 }
+```
 
 eviction:
+```
 {
 	#of units: number
 	date: date
@@ -20,8 +23,10 @@ eviction:
 	links : [{label: string, url: string}]
 	property: id
 }
+```
 
 property: 
+```
 {
 	block-lot number: string
 	label: address
@@ -29,6 +34,7 @@ property:
 	lon: num
 	evictions: ids[]
 }
+```
 
 has there been an eviction at this address? address string -> property 
 what evictions is someone connected to? name string -> evictor
