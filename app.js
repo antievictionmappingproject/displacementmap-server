@@ -20,7 +20,7 @@ function property(req, res, next) {
 };
 
 function propertyById(req, res, next) {
-    var blklot = req.params.blklot;
+  var blklot = req.params.blklot;
     //todo: move to db class
     dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text", 
       [blklot],
@@ -30,42 +30,59 @@ function propertyById(req, res, next) {
         var property = {};
         property.id = blklot;
         var addresses = query_rows.map( function(row) {
-            return row.address;
-          });
+          return row.address;
+        });
         property.addresses = addresses;
         property.lat = query_rows[0].latitude;
         property.lon = query_rows[0].longitude;
         res.send(property);
-       });
-};
+      });
+  };
 
-function getByAddress(address, res) {
+  var limit = require("simple-rate-limiter");
+  var geocode = limit(function(address, res, callback) {
     geocoder.geocode(address, function(err, result) {
-    var streetNumber = result.results[0].address_components[0].short_name;
-    var streetName = result.results[0].address_components[1].short_name;
+      if (err) {
+        res.send(500, err);
+      } else if (result.error_message) {
+        res.send(500, result.error_message);
+      } else {
+        var streetNumber = result.results[0].address_components[0].short_name;
+        var streetName = result.results[0].address_components[1].short_name;
 
-    console.log(streetNumber);
-    console.log(streetName);
+        console.log(streetNumber);
+        console.log(streetName);
+        callback(streetNumber, streetName, res)
+      }
+    },{"components":"locality:San Francisco"});
+  }).to(5).per(1000).evenly(true);
 
+  function getByAddress(address, res) {
+    console.log('address received: ' + address);
     //todo: move to db class
-    dbQuery("SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
-      [streetName.toUpperCase().trim(), streetNumber.trim()],
-      function(err, query_rows, results) {
-        console.log(query_rows);
-        res.send(query_rows.map( function(row) {
-            return row.blk_lot;
-          }));
-       });
-    },{"components":"locality:San Francisco"}
-  );
-};
+    function getBlkLot(streetNumber, streetName, res) {
+      dbQuery("SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
+        [streetName.toUpperCase().trim(), streetNumber.trim()],
+        function(err, query_rows, results) {
+          if (err) {
+            res.send(500, err)
+          } else {
+            console.log(query_rows);
+            res.send(query_rows.map( function(row) {
+              return row.blk_lot;
+            }));
+          }
+        });
+    }
+    geocode(address, res, getBlkLot)
+  };
 
-var server = restify.createServer();
-server.use(restify.queryParser());
+  var server = restify.createServer();
+  server.use(restify.queryParser());
 
-server.get('/properties', property);
-server.get('/properties/:blklot', propertyById);
+  server.get('/properties', property);
+  server.get('/properties/:blklot', propertyById);
 
-server.listen(8080, function() {
-  console.log('%s listening at %s', server.name, server.url);
-});
+  server.listen(8080, function() {
+    console.log('%s listening at %s', server.name, server.url);
+  });
