@@ -10,7 +10,7 @@ dbQuery.connectionParameters = 'postgres://'+ config.db.user + ':' + config.db.p
 
 fs.writeFileSync('blklot_eviction.output', '');
 
-dbQuery("select petition_address_temp.petition, address_orig from petition_address_temp, evictions where petition_address_temp.petition = evictions.petition", 
+dbQuery("select evictions.petition, blklot_ellis.blk_lot, petition_address_temp.address_orig, address_blklot.addr_num, address_blklot.st_name, address_blklot.st_type, address_blklot.unit_num from evictions left outer join blklot_ellis on (evictions.petition = blklot_ellis.petition) left outer join petition_address_temp on (evictions.petition = petition_address_temp.petition) left outer join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) where blklot_ellis.blk_lot is null and address_orig is not null", 
 	[],
 	function(err, query_rows, results) {
 		query_rows.map(function(row) {

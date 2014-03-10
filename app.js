@@ -1,7 +1,7 @@
 var restify = require('restify');
 var geocoder = require('geocoder');
 var util = require("util")
-var config = require('./config')
+var config = require('./config');
 
 var dbQuery = require('pg-query');
 
@@ -78,7 +78,12 @@ function propertyById(req, res, next) {
   };
 
   var server = restify.createServer();
+
   server.use(restify.queryParser());
+  server.use(restify.fullResponse());
+
+  //ummm?
+  server.use(restify.CORS());
 
   server.get('/properties', property);
   server.get('/properties/:blklot', propertyById);
