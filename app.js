@@ -59,7 +59,7 @@ function propertyById(req, res, next) {
 
   function getByAddress(address, res) {
     console.log('address received: ' + address);
-    //todo: move to db class
+    //todo: move to db class, do as joins
     function getBlkLot(streetNumber, streetName, res) {
       dbQuery("SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
         [streetName.toUpperCase().trim(), streetNumber.trim()],
@@ -67,20 +67,70 @@ function propertyById(req, res, next) {
           if (err) {
             res.send(500, err)
           } else {
-            console.log(query_rows);
-            res.send(query_rows.map( function(row) {
-              return row.blk_lot;
-            }));
-          }
-        });
-    }
-    geocode(address, res, getBlkLot)
-  };
+            if (query_rows.length >0) {
+              var mappedrows = query_rows.map( function(row) {
+                return row.blk_lot;
+              });
+              var params = mappedrows.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
-  var server = restify.createServer();
+              dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN(" + params.join(',') + ')',
+                mappedrows,
+                function(err, query_rows, results) {
+                  if (err) {
+                    res.send(500, err)
+                  } else {
+                    if (query_rows.length > 0) {
+                      var addresses = query_rows.map( function(row) {
+                        return row.address;
+                      });
 
-  server.use(restify.queryParser());
-  server.use(restify.fullResponse());
+                      var pin = {};
+                      pin.addresses = addresses.filter(distinct).sort();
+                      pin.lat = query_rows[0].latitude;
+                      pin.lon = query_rows[0].longitude;
+
+                      dbQuery("SELECT petition FROM blklot_ellis WHERE blk_lot IN(" + params.join(',') + ')',
+                        mappedrows,
+                        function(err, query_rows, results) {
+                          console.log(query_rows);
+                          var petitions = query_rows.map( function(row) {
+                            return row.petition;
+                          });
+                          var evictions = petitions.filter(distinct);
+                          if (evictions.length > 0) {
+                            var evictionParams = evictions.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
+                            dbQuery("SELECT date FROM evictions WHERE petition IN(" + evictionParams.join(',') + ')',
+                              evictions,
+                              function(err, query_rows, results) {
+                                console.log(query_rows);
+                                var dates = query_rows.map( function(row) {
+                                  return row.date;
+                                });
+                                pin.evictions = dates.filter(distinct).sort();
+                                res.send(pin);
+                              });
+                          } else {
+                            res.send(pin);
+                          }
+                        });
+} else {
+  res.send(500, "blocklot found without address info")
+}
+}
+});
+} else {
+  res.send(404);
+}
+}
+});
+}
+geocode(address, res, getBlkLot)
+};
+
+var server = restify.createServer();
+
+server.use(restify.queryParser());
+server.use(restify.fullResponse());
 
   //ummm?
   server.use(restify.CORS());
@@ -91,3 +141,7 @@ function propertyById(req, res, next) {
   server.listen(8080, function() {
     console.log('%s listening at %s', server.name, server.url);
   });
+
+  function distinct(value, index, self) { 
+    return self.indexOf(value) === index;
+  }
