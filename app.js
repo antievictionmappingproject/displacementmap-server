@@ -46,7 +46,8 @@ function propertyById(req, res, next) {
       [streetName.toUpperCase().trim(), streetNumber.trim()],
       function(err, query_rows, results) {
         if (err) {
-          res.send(500, err)
+          console.log("err querying for blkLot: " + err);
+          res.send(500, err);
         } else {
           console.log("length: " + query_rows.length);
           if (query_rows.length > 0) {
@@ -59,6 +60,7 @@ function propertyById(req, res, next) {
               mappedrows,
               function(err, query_rows, results) {
                 if (err) {
+                  console.log("err querying for addresses: " + err);
                   res.send(500, err)
                 } else {
                   if (query_rows.length > 0) {
