@@ -1,5 +1,4 @@
 var restify = require('restify');
-var geocoder = require('geocoder');
 var util = require("util")
 var config = require('./config');
 

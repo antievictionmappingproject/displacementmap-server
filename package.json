@@ -1,0 +1,21 @@
+{
+  "name": "displacementmap-server",
+  "version": "0.0.0",
+  "description": "API server for the Anti-Eviction Mapping Project DB",
+  "main": "app.js",
+  "dependencies": {
+    "pg-query": "~0.7.0",
+    "restify": "~2.6.3",
+    "pg": "~2.11.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antievictionmappingproject/displacementmap-server.git"
+  },
+  "author": "Kelsey Gilmore-Innis",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/antievictionmappingproject/displacementmap-server/issues"
+  },
+  "homepage": "https://github.com/antievictionmappingproject/displacementmap-server"
+}
