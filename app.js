@@ -4,7 +4,8 @@ var config = require('./config');
 
 var dbQuery = require('pg-query');
 
-dbQuery.connectionParameters = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
+var connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
+dbQuery.connectionParameters = connString;
 
 function property(req, res, next) {
   var query = req.query;
@@ -46,6 +47,7 @@ function propertyById(req, res, next) {
       [streetName.toUpperCase().trim(), streetNumber.trim()],
       function(err, query_rows, results) {
         if (err) {
+          console.log("connection params: " + connString);
           console.log("err querying for blkLot: " + err);
           res.send(500, err);
         } else {
