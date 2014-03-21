@@ -128,7 +128,7 @@ server.use(restify.fullResponse());
   server.get('/properties', property);
   server.get('/properties/:blklot', propertyById);
 
-  server.listen(3000, function() {
+  server.listen(8080, function() {
     console.log('%s listening at %s', server.name, server.url);
   });
 
