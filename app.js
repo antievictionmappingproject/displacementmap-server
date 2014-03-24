@@ -20,6 +20,73 @@ function property(req, res, next) {
   }
 };
 
+function makePledge(req, res, next) {
+  //TODO: check for empty
+  var params = req.params;
+
+  console.log("pledge received: " + util.inspect(params, false, null));
+
+  var firstName = params.firstName || '';
+  var lastName = params.lastName || '';
+  var email = params.email || '';
+  var comment = params.reason || '';
+  var anonymous = (typeof params.anonymous === 'undefined') ? false : params.anonymous;
+
+  //todo: move to db class
+  dbQuery("INSERT INTO pledges(first_name, last_name, email, comment, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
+    [firstName,
+    lastName,
+    email,
+    comment,
+    anonymous,
+    new Date()],
+    function(err, query_rows, results) {
+      if (err) {
+        console.log("err inserting pledge: " + err);
+        res.send(500, err);
+      } else {
+        res.send(200);
+      }
+    });
+}
+
+function getPledges(req, res, next) {
+  //todo: move to db class
+  dbQuery("select first_name, last_name, comment, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc", 
+    [],
+    function(err, query_rows, results) {
+      if (err) {
+        console.log("err retrieving pledges: " + err);
+        res.send(500, err);
+      } else {
+        console.log(query_rows);
+        var pledges = query_rows.map( function(row) {
+          var pledge = {};
+          if (row.anonymous) {
+            pledge.name = "Anonymous";
+          } else {
+            var firstName = row.first_name || ""
+            if (row.last_name && row.last_name.trim()) {
+              pledge.name = firstName + " " + row.last_name.trim().charAt(0) + ".";
+            } else if (row.first_name && row.first_name.trim()) {
+              pledge.name = firstName;
+            } else {
+              pledge.name = "Anonymous";
+            }
+          }
+          if (row.comment) {
+            pledge.reason = row.comment;
+          }
+          pledge.timestamp = new Date(row.pledge_timestamp);
+          return pledge;
+        });
+        console.log(pledges);
+        res.send(pledges);
+      }
+    });
+}
+
+
 function propertyById(req, res, next) {
   var blklot = req.params.blklot;
     //todo: move to db class
@@ -125,12 +192,16 @@ var server = restify.createServer();
 
 server.use(restify.queryParser());
 server.use(restify.fullResponse());
+server.use(restify.bodyParser());
 
   //ummm?
   server.use(restify.CORS());
 
   server.get('/properties', property);
   server.get('/properties/:blklot', propertyById);
+
+  server.post('/pledges', makePledge);
+  server.get('/pledges', getPledges);
 
   server.listen(process.env.PORT || 8888, function() {
     console.log('%s listening at %s', server.name, server.url);
