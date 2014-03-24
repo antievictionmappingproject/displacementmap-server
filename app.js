@@ -29,15 +29,15 @@ function makePledge(req, res, next) {
   var firstName = params.firstName || '';
   var lastName = params.lastName || '';
   var email = params.email || '';
-  var comment = params.reason || '';
+  var reason = params.reason || '';
   var anonymous = (typeof params.anonymous === 'undefined') ? false : params.anonymous;
 
   //todo: move to db class
-  dbQuery("INSERT INTO pledges(first_name, last_name, email, comment, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
+  dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
     [firstName,
     lastName,
     email,
-    comment,
+    reason,
     anonymous,
     new Date()],
     function(err, query_rows, results) {
@@ -52,7 +52,7 @@ function makePledge(req, res, next) {
 
 function getPledges(req, res, next) {
   //todo: move to db class
-  dbQuery("select first_name, last_name, comment, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc", 
+  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc", 
     [],
     function(err, query_rows, results) {
       if (err) {
@@ -74,8 +74,9 @@ function getPledges(req, res, next) {
               pledge.name = "Anonymous";
             }
           }
-          if (row.comment) {
-            pledge.reason = row.comment;
+          if (row.reason) {
+            //todo: truncate
+            pledge.reason = row.reason;
           }
           pledge.timestamp = new Date(row.pledge_timestamp);
           return pledge;
@@ -92,9 +93,7 @@ function propertyById(req, res, next) {
     //todo: move to db class
     dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text", 
       [blklot],
-      function(err, query_rows, results) {
-        console.log(query_rows);
-        //todo: check for result
+      function(err, query_rows, results) {        //todo: check for result
         var property = {};
         property.id = blklot;
         var addresses = query_rows.map( function(row) {
@@ -114,7 +113,6 @@ function propertyById(req, res, next) {
       [streetName.toUpperCase().trim(), streetNumber.trim()],
       function(err, query_rows, results) {
         if (err) {
-          console.log("connection params: " + connString);
           console.log("err querying for blkLot: " + err);
           res.send(500, err);
         } else {
