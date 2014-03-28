@@ -31,6 +31,7 @@ function makePledge(req, res, next) {
   var email = params.email || '';
   var reason = params.reason || '';
   var anonymous = (typeof params.anonymous === 'undefined') ? false : params.anonymous;
+  var timestamp = new Date();
 
   //todo: move to db class
   dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
@@ -39,15 +40,37 @@ function makePledge(req, res, next) {
     email,
     reason,
     anonymous,
-    new Date()],
+    timestamp],
     function(err, query_rows, results) {
       if (err) {
         console.log("err inserting pledge: " + err);
         res.send(500, err);
       } else {
-        res.send(200);
+        var newPledge = constructPledge(anonymous, firstName, lastName, reason, timestamp);
+        res.send(newPledge);
       }
     });
+}
+
+function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
+  var pledge = {};
+  if (anonymous) {
+    pledge.name = "Anonymous";
+  } else {
+    var firstName = first_name || ""
+    if (last_name && last_name.trim()) {
+      pledge.name = firstName + " " + last_name.trim().charAt(0) + ".";
+    } else if (first_name && first_name.trim()) {
+      pledge.name = firstName;
+    } else {
+      pledge.name = "Anonymous";
+    }
+  }
+  if (reason) {
+      pledge.reason = reason; //todo: truncate
+   }
+  pledge.timestamp = new Date(timestamp);
+  return pledge;
 }
 
 function getPledges(req, res, next) {
@@ -61,25 +84,7 @@ function getPledges(req, res, next) {
       } else {
         console.log(query_rows);
         var pledges = query_rows.map( function(row) {
-          var pledge = {};
-          if (row.anonymous) {
-            pledge.name = "Anonymous";
-          } else {
-            var firstName = row.first_name || ""
-            if (row.last_name && row.last_name.trim()) {
-              pledge.name = firstName + " " + row.last_name.trim().charAt(0) + ".";
-            } else if (row.first_name && row.first_name.trim()) {
-              pledge.name = firstName;
-            } else {
-              pledge.name = "Anonymous";
-            }
-          }
-          if (row.reason) {
-            //todo: truncate
-            pledge.reason = row.reason;
-          }
-          pledge.timestamp = new Date(row.pledge_timestamp);
-          return pledge;
+          return constructPledge(row.anonymous, row.first_name, row.last_name, row.reason, row.pledge_timestamp);
         });
         console.log(pledges);
         res.send(pledges);
