@@ -30,7 +30,7 @@ function makePledge(req, res, next) {
   var lastName = params.lastName || '';
   var email = params.email || '';
   var reason = params.reason || '';
-  var anonymous = (typeof params.anonymous === 'undefined') ? false : params.anonymous;
+  var anonymous = (typeof params.anonymous === 'undefined') ? false : (params.anonymous.toLowerCase() === 'true');
   var timestamp = new Date();
 
   //todo: move to db class
