@@ -22,34 +22,38 @@ function property(req, res, next) {
 
 function makePledge(req, res, next) {
   //TODO: check for empty
-  var params = req.params;
+  if (!req.params || Object.keys(req.params).length === 0) {
+    res.send(400, "pledger info required")
+  } else {
+    var params = req.params;
 
-  console.log("pledge received: " + util.inspect(params, false, null));
+    console.log("pledge received: " + util.inspect(params, false, null));
 
-  var firstName = params.firstName || '';
-  var lastName = params.lastName || '';
-  var email = params.email || '';
-  var reason = params.reason || '';
-  var anonymous = (typeof params.anonymous === 'undefined') ? false : (params.anonymous.toLowerCase() === 'true');
-  var timestamp = new Date();
+    var firstName = params.firstName || '';
+    var lastName = params.lastName || '';
+    var email = params.email || '';
+    var reason = params.reason || '';
+    var anonymous = (typeof params.anonymous === 'undefined') ? false : (params.anonymous.toLowerCase() === 'true');
+    var timestamp = new Date();
 
-  //todo: move to db class
-  dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
-    [firstName,
-    lastName,
-    email,
-    reason,
-    anonymous,
-    timestamp],
-    function(err, query_rows, results) {
-      if (err) {
-        console.log("err inserting pledge: " + err);
-        res.send(500, err);
-      } else {
-        var newPledge = constructPledge(anonymous, firstName, lastName, reason, timestamp);
-        res.send(newPledge);
-      }
-    });
+    //todo: move to db class
+    dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
+      [firstName,
+      lastName,
+      email,
+      reason,
+      anonymous,
+      timestamp],
+      function(err, query_rows, results) {
+        if (err) {
+          console.log("err inserting pledge: " + err);
+          res.send(500, err);
+        } else {
+          var newPledge = constructPledge(anonymous, firstName, lastName, reason, timestamp);
+          res.send(newPledge);
+        }
+      });
+  }
 }
 
 function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
@@ -67,16 +71,23 @@ function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
     }
   }
   if (reason) {
-      pledge.reason = reason; //todo: truncate
-   }
+    if (reason.length > 1000) {
+      pledge.reason = reason.substring(0, 1000) + "...";
+    } else {
+      pledge.reason = reason; 
+    }
+  }
   pledge.timestamp = new Date(timestamp);
   return pledge;
 }
 
 function getPledges(req, res, next) {
+  var limit = parseInt(req.params.limit) || 30;
+  var skip = parseInt(req.params.skip) || 0;
+  console.log("skip: " + skip)
   //todo: move to db class
-  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc", 
-    [],
+  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1", 
+    [limit, skip],
     function(err, query_rows, results) {
       if (err) {
         console.log("err retrieving pledges: " + err);
@@ -86,8 +97,25 @@ function getPledges(req, res, next) {
         var pledges = query_rows.map( function(row) {
           return constructPledge(row.anonymous, row.first_name, row.last_name, row.reason, row.pledge_timestamp);
         });
-        console.log(pledges);
         res.send(pledges);
+      }
+    });
+}
+
+function getPledgeTotal(req, res, next) {
+  dbQuery("select count(*) from pledges", 
+    [],
+    function(err, query_rows, results) {
+      if (err) {
+        console.log("err retrieving pledge count: " + err);
+        res.send(500, err);
+      } else {
+        if (query_rows.length > 0) {
+          console.log(query_rows);
+          res.send(query_rows[0].count);
+        } else {
+          res.send(500, "count not found")
+        }
       }
     });
 }
@@ -205,6 +233,7 @@ server.use(restify.bodyParser());
 
   server.post('/pledges', makePledge);
   server.get('/pledges', getPledges);
+  server.get('/pledges/total', getPledgeTotal);
 
   server.listen(process.env.PORT || 8888, function() {
     console.log('%s listening at %s', server.name, server.url);
