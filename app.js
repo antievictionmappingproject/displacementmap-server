@@ -190,6 +190,7 @@ function propertyById(req, res, next) {
                                 eviction.date = row.date;
                                 eviction.units = row.units;
                                 eviction.landlord = row.landlord;
+                                eviction.eviction_type = "ellis";
                                 return eviction;
                               });
 
@@ -200,6 +201,13 @@ function propertyById(req, res, next) {
                                 if(keyA > keyB) return 1;
                                 return 0;
                               });
+
+                              if (pin.evictions) { //todo: actual data
+                                pin.protected_tenants = parseInt(streetNumber.trim()) % 3;
+                                if (parseInt(streetNumber.trim()) % 2 === 0) {
+                                  pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
+                                }
+                              }
 
                               res.send(pin);
                             });
