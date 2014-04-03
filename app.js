@@ -189,7 +189,7 @@ function propertyById(req, res, next) {
                                 var eviction = {};
                                 eviction.date = row.date;
                                 eviction.units = row.units;
-                                eviction.landlord = row.landlord;
+                                eviction.landlords = row.landlord.split("\n");
                                 eviction.eviction_type = "ellis";
                                 return eviction;
                               });
