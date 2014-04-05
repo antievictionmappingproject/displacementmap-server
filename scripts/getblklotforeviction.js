@@ -5,12 +5,13 @@ var restify = require('restify');
 var util = require("util");
 var async = require("async");
 
-
-dbQuery.connectionParameters = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
+var connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
+dbQuery.connectionParameters = connString;
 
 fs.writeFileSync('blklot_eviction.output', '');
 
-dbQuery("select evictions.petition, blklot_ellis.blk_lot, petition_address_temp.address_orig, address_blklot.addr_num, address_blklot.st_name, address_blklot.st_type, address_blklot.unit_num from evictions left outer join blklot_ellis on (evictions.petition = blklot_ellis.petition) left outer join petition_address_temp on (evictions.petition = petition_address_temp.petition) left outer join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) where blklot_ellis.blk_lot is null and address_orig is not null", 
+//dbQuery("select evictions.petition, blklot_ellis.blk_lot, petition_address_temp.address_orig, address_blklot.addr_num, address_blklot.st_name, address_blklot.st_type, address_blklot.unit_num from evictions left outer join blklot_ellis on (evictions.petition = blklot_ellis.petition) left outer join petition_address_temp on (evictions.petition = petition_address_temp.petition) left outer join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) where blklot_ellis.blk_lot is null and address_orig is not null", 
+dbQuery("select omi_address_temp.petition, address_orig, zipcode from omi_address_temp, omi_evictions where omi_address_temp.petition = omi_evictions.petition", 
 	[],
 	function(err, query_rows, results) {
 		query_rows.map(function(row) {
@@ -29,6 +30,7 @@ dbQuery("select evictions.petition, blklot_ellis.blk_lot, petition_address_temp.
 					};
 				};
 				var st_name = address.substring(address.indexOf(' '), address.lastIndexOf(' ')).trim();
+
 				dbQuery('SELECT blk_lot from address_blklot WHERE st_name = \'' + st_name.toUpperCase() + '\' AND addr_num IN (' + st_nums.join(',') + ')', 
 					[],
 					function(err, query_rows, results) {
@@ -44,7 +46,7 @@ dbQuery("select evictions.petition, blklot_ellis.blk_lot, petition_address_temp.
 				var blk_lots = results.filter(distinct);
 				blk_lots.map(function(blk_lot){
 					fs.appendFileSync('blklot_eviction.output', 
-						"INSERT INTO blklot_ellis (blk_lot, petition) VALUES ('"+blk_lot + "', '" + petition + "');\n");
+						"INSERT INTO blklot_omi (blk_lot, petition) VALUES ('"+blk_lot + "', '" + petition + "');\n");
 				});
 			});
 		});

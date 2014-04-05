@@ -182,7 +182,7 @@ function propertyById(req, res, next) {
                         var evictions = petitions.filter(distinct);
                         if (evictions.length > 0) {
                           var evictionParams = evictions.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
-                          dbQuery("SELECT * FROM evictions WHERE petition IN(" + evictionParams.join(',') + ')',
+                          dbQuery("SELECT * FROM ellis_act_evictions WHERE petition IN(" + evictionParams.join(',') + ')',
                             evictions,
                             function(err, query_rows, results) {
                               var evictions = query_rows.map( function(row) {
