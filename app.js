@@ -72,7 +72,7 @@ function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
   }
   if (reason) {
     if (reason.length > 1000) {
-      pledge.reason = reason.substring(0, 1000) + "...";
+      pledge.reason = reason.substring(0, 500) + "...";
     } else {
       pledge.reason = reason; 
     }
