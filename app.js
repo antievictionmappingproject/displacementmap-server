@@ -1,6 +1,7 @@
 var restify = require('restify');
-var util = require("util")
+var util = require('util')
 var config = require('./config');
+var Q = require('q');
 
 var dbQuery = require('pg-query');
 
@@ -140,137 +141,97 @@ function propertyById(req, res, next) {
 
   function getByAddress(streetNumber, streetName, res) {
     console.log('address received: ' + streetNumber + ' ' + streetName);
-    //todo: move to db class, do as joins
-    dbQuery("SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer", 
-      [streetName.toUpperCase().trim(), streetNumber.trim()],
-      function(err, query_rows, results) {
-        if (err) {
-          console.log("err querying for blkLot: " + err);
-          res.send(500, err);
-        } else {
-          if (query_rows.length > 0) {
-            var mappedrows = query_rows.map( function(row) {
-              return row.blk_lot;
-            });
-            var params = mappedrows.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
-            //SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = 'OCEAN AVE' and addr_num = 1920)
-            dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN(" + params.join(',') + ')',
-              mappedrows,
-              function(err, query_rows, results) {
-                if (err) {
-                  console.log("err querying for addresses: " + err);
-                  res.send(500, err)
-                } else {
-                  if (query_rows.length > 0) {
-                    var addresses = query_rows.map( function(row) {
-                      return row.address;
-                    });
+    var dbError = function(error){
+      console.log("err querying for evictions: " + error);
+      res.send(500, error)
+    }
 
-                    var pin = {};
-                    pin.addresses = addresses.filter(distinct).sort();
-                    pin.lat = query_rows[0].latitude;
-                    pin.lon = query_rows[0].longitude;
+    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
+      "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
+      [streetName.toUpperCase().trim(), 
+      streetNumber.trim()]).then(function(result) {
+        var query_rows = result.rows;
+        if (query_rows.length > 0) {
+          var addresses = query_rows.map( function(row) {
+            return row.address;
+          });
 
-                    //ellis act evictions
-                    dbQuery("SELECT petition FROM blklot_ellis WHERE blk_lot IN(" + params.join(',') + ')',
-                      mappedrows,
-                      function(err, query_rows, results) {
-                        var petitions = query_rows.map( function(row) {
-                          return row.petition;
-                        });
-                        var evictions = petitions.filter(distinct);
-                        if (evictions.length > 0) {
-                          var evictionParams = evictions.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
-                          dbQuery("SELECT * FROM ellis_act_evictions WHERE petition IN(" + evictionParams.join(',') + ')',
-                            evictions,
-                            function(err, query_rows, results) {
+          var pin = {};
+          pin.addresses = addresses.filter(distinct).sort();
+          pin.lat = query_rows[0].latitude;
+          pin.lon = query_rows[0].longitude;
 
-                              var evictions = query_rows.map( function(row) {
-                                var eviction = {};
-                                eviction.date = row.date;
-                                eviction.units = row.units;
-                                eviction.landlords = row.landlord.split("\n");
-                                eviction.eviction_type = "ellis";
-                                return eviction;
-                              });
+          var blk_lots = query_rows.map( function(row) {
+            return row.blk_lot;
+          }).filter(distinct);
 
-                              pin.evictions = evictions.filter(distinct);
+          var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
-                              if (pin.evictions) { //todo: actual data
-                                pin.protected_tenants = parseInt(streetNumber.trim()) % 3;
-                                if (parseInt(streetNumber.trim()) % 2 === 0) {
-                                  pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
-                                }
-                              }
-                            });
-                        }
+          //ellis act evictions
+          var ellises = dbQuery("SELECT * from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
+            blk_lots).then(function(result) {
+              var query_rows = result.rows;
 
-                    //omi evictions
-                    dbQuery("SELECT petition FROM blklot_omi WHERE blk_lot IN(" + params.join(',') + ')',
-                      mappedrows,
-                      function(err, query_rows, results) {
-                        var petitions = query_rows.map( function(row) {
-                          return row.petition;
-                        });
-                        var evictions = petitions.filter(distinct);
-                        if (evictions.length > 0) {
-                          var evictionParams = evictions.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
-                          dbQuery("SELECT * FROM omi_evictions WHERE petition IN(" + evictionParams.join(',') + ')',
-                            evictions,
-                            function(err, query_rows, results) {
-                              var evictions = query_rows.map( function(row) {
-                                var eviction = {};
-                                eviction.date = row.date;
-                                eviction.address = row.address;
-                                if (row.unit) {
-                                  eviction.unit = row.unit;
-                                }
-                                eviction.eviction_type = "omi";
-                                return eviction;
-                              });
+              var evictions = query_rows.map( function(row) {
+                var eviction = {};
+                eviction.date = row.date;
+                eviction.units = row.units;
+                eviction.landlords = row.landlord.split("\n");
+                eviction.eviction_type = "ellis";
+                return eviction;
+              });
 
-                              var currentEvictions = (pin.evictions) ? pin.evictions : [];
+              if (evictions.length > 0) {
+                pin.protected_tenants = parseInt(streetNumber.trim()) % 3; //todo: actual data
+                if (parseInt(streetNumber.trim()) % 2 === 0) {
+                  pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
+                }
+              }
+              console.log("ellises queried");
 
-                              pin.evictions = currentEvictions.concat(evictions.filter(distinct));
+              return evictions;
+            }, dbError);
 
-                              if (pin.evictions) { //todo: this is terrible
-                                pin.evictions = pin.evictions.sort(function(a, b){
-                                  var keyA = new Date(a.updated_at),
-                                  keyB = new Date(b.updated_at);
-                                  if(keyA < keyB) return -1;
-                                  if(keyA > keyB) return 1;
-                                  return 0;
-                                });
-                              }
-                              res.send(pin); 
-                            });
-} else {
-  if (pin.evictions) {
-    pin.evictions = pin.evictions.sort(function(a, b){
-      var keyA = new Date(a.updated_at),
-      keyB = new Date(b.updated_at);
-      if(keyA < keyB) return -1;
-      if(keyA > keyB) return 1;
-      return 0;
-    });
-  }
-  res.send(pin); 
+            //omi evictions
+            var omis = dbQuery("SELECT * from omi_evictions join blklot_omi on (blklot_omi.petition = omi_evictions.petition) where blklot_omi.blk_lot IN(" + blk_lotParams.join(',') + ')',
+              blk_lots).then(function(result) {
+                var query_rows = result.rows;
+                var evictions = query_rows.map( function(row) {
+                  var eviction = {};
+                  eviction.date = row.date;
+                  eviction.address = row.address;
+                  if (row.unit) {
+                    eviction.unit = row.unit;
+                  }
+                  eviction.eviction_type = "omi";
+                  return eviction;
+                });
+                console.log("omis queried");
+                return evictions;
+              }, dbError);
+
+              Q.all([ellises, omis]).then(function(evictionResults) {
+                console.log("inside ALL");
+                var allEvictions = evictionResults[0].concat(evictionResults[1]).sort(function(a, b){
+                  var keyA = new Date(a.date),
+                  keyB = new Date(b.date);
+                  if(keyA > keyB) return -1;
+                  if(keyA < keyB) return 1;
+                  return 0;
+                });
+
+                if (allEvictions.length > 0) {
+                  pin.evictions = allEvictions;
+                }
+                res.send(pin); 
+              }, dbError);
+
+            } else {
+              res.send(404);
+            }
+          }, dbError);
 }
-});
-});
-
-} else {
-  res.send(500, "blocklot found without address info")
-}
-}
-});
-} else {
-  res.send(404);
-}
-}
-});
-};
 
 var server = restify.createServer();
 
