@@ -169,7 +169,7 @@ function propertyById(req, res, next) {
           var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
           //ellis act evictions
-          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
+          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.dirty_dozen, ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
             blk_lots).then(function(result) {
               var query_rows = result.rows;
 
@@ -181,14 +181,21 @@ function propertyById(req, res, next) {
                 if (row.protected) {
                   eviction.protected = row.protected;
                 }
+                if (row.dirty_dozen) {
+                  eviction.dirty_dozen = row.dirty_dozen;
+                }
                 eviction.eviction_type = "ellis";
                 return eviction;
               });
 
-              if (evictions.length > 0) {
-                if (parseInt(streetNumber.trim()) % 2 === 0) {
-                  pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
-                }
+              var dirtyDozen = evictions.filter(function(eviction){
+                return eviction.dirty_dozen;
+              });
+
+              console.log(dirtyDozen);
+              if (dirtyDozen.length > 0) {
+                console.log(dirtyDozen[0].dirty_dozen);
+                  pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
               }
               return evictions;
             }, dbError);
