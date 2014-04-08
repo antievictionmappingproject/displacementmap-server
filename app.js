@@ -169,7 +169,7 @@ function propertyById(req, res, next) {
           var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
           //ellis act evictions
-          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.date, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
+          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
             blk_lots).then(function(result) {
               var query_rows = result.rows;
 
@@ -178,12 +178,14 @@ function propertyById(req, res, next) {
                 eviction.date = row.date;
                 eviction.units = row.units;
                 eviction.landlords = row.landlord.split("\n");
+                if (row.protected) {
+                  eviction.protected = row.protected;
+                }
                 eviction.eviction_type = "ellis";
                 return eviction;
               });
 
               if (evictions.length > 0) {
-               // pin.protected_tenants = '?'; //todo: actual data
                 if (parseInt(streetNumber.trim()) % 2 === 0) {
                   pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
                 }
@@ -218,6 +220,9 @@ function propertyById(req, res, next) {
                 });
 
                 if (allEvictions.length > 0) {
+                  var protected_tenants_array = allEvictions.map(function(eviction){return (eviction.protected || 0) });
+                  var protected_tenants = Math.max.apply(null, protected_tenants_array);
+                  pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
                   pin.evictions = allEvictions;
                 }
                 res.send(pin); 
