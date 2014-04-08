@@ -169,7 +169,7 @@ function propertyById(req, res, next) {
           var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
           //ellis act evictions
-          var ellises = dbQuery("SELECT * from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
+          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.date, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
             blk_lots).then(function(result) {
               var query_rows = result.rows;
 
@@ -188,13 +188,11 @@ function propertyById(req, res, next) {
                   pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
                 }
               }
-              console.log("ellises queried");
-
               return evictions;
             }, dbError);
 
             //omi evictions
-            var omis = dbQuery("SELECT * from omi_evictions join blklot_omi on (blklot_omi.petition = omi_evictions.petition) where blklot_omi.blk_lot IN(" + blk_lotParams.join(',') + ')',
+            var omis = dbQuery("SELECT distinct(omi_evictions.petition), omi_evictions.date, omi_evictions.address, omi_evictions.unit from omi_evictions join blklot_omi on (blklot_omi.petition = omi_evictions.petition) where blklot_omi.blk_lot IN(" + blk_lotParams.join(',') + ')',
               blk_lots).then(function(result) {
                 var query_rows = result.rows;
                 var evictions = query_rows.map( function(row) {
@@ -207,12 +205,10 @@ function propertyById(req, res, next) {
                   eviction.eviction_type = "omi";
                   return eviction;
                 });
-                console.log("omis queried");
                 return evictions;
               }, dbError);
 
               Q.all([ellises, omis]).then(function(evictionResults) {
-                console.log("inside ALL");
                 var allEvictions = evictionResults[0].concat(evictionResults[1]).sort(function(a, b){
                   var keyA = new Date(a.date),
                   keyB = new Date(b.date);
