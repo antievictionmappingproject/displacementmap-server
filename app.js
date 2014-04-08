@@ -183,7 +183,7 @@ function propertyById(req, res, next) {
               });
 
               if (evictions.length > 0) {
-                pin.protected_tenants = parseInt(streetNumber.trim()) % 3; //todo: actual data
+                pin.protected_tenants = '?'; //todo: actual data
                 if (parseInt(streetNumber.trim()) % 2 === 0) {
                   pin.dirty_dozen = "https://antievictionmap.squarespace.com/dirty-dozen/";
                 }
