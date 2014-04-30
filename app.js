@@ -198,6 +198,14 @@ return res;
 }
 
 var allEvictions = getAllProperties();
+var allEvictionsLatLonOnly = allEvictions.then(function (evictions) {
+      return _.values(evictions).map(function(eviction){
+         var latLon = {};
+         latLon.lat = eviction.lat;
+         latLon.lon = eviction.lon;
+         return latLon;
+      });
+    })
 
 function property(req, res, next) {
 
@@ -212,6 +220,10 @@ function property(req, res, next) {
 
   if (num !== undefined && st !== undefined) {
     getByAddress(num, st, res);
+  } else if (query.latLon) {
+    allEvictionsLatLonOnly.then(function (value) {
+      res.send(value);
+    }, dbError);
   } else {
     allEvictions.then(function (value) {
       res.send(value);
