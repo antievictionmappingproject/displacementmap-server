@@ -7,7 +7,8 @@
     "pg-query": "~0.7.0",
     "restify": "~2.6.3",
     "pg": "~2.11.1",
-    "q": "~1.0.1"
+    "q": "~1.0.1",
+    "underscore": "~1.6.0"
   },
   "repository": {
     "type": "git",

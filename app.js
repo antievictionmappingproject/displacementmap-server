@@ -2,24 +2,12 @@ var restify = require('restify');
 var util = require('util')
 var config = require('./config');
 var Q = require('q');
+var _ = require('underscore');
 
 var dbQuery = require('pg-query');
 
 var connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
 dbQuery.connectionParameters = connString;
-
-function property(req, res, next) {
-  var query = req.query;
-  var num = query.num;
-  var st = query.st;
-
-  if (num !== undefined && st !== undefined) {
-    getByAddress(num, st, res);
-  } else {
-    //get all
-    res.send("getting all, eventually")
-  }
-};
 
 function makePledge(req, res, next) {
   //TODO: check for empty
@@ -94,7 +82,6 @@ function getPledges(req, res, next) {
         console.log("err retrieving pledges: " + err);
         res.send(500, err);
       } else {
-        console.log(query_rows);
         var pledges = query_rows.map( function(row) {
           return constructPledge(row.anonymous, row.first_name, row.last_name, row.reason, row.pledge_timestamp);
         });
@@ -139,100 +126,204 @@ function propertyById(req, res, next) {
       });
   };
 
-  function getByAddress(streetNumber, streetName, res) {
-    console.log('address received: ' + streetNumber + ' ' + streetName);
+ /* select distinct on(latitude, longitude) latitude, longitude, address from
+(select distinct(blk_lot) from (select * from blklot_omi union select * from blklot_ellis) as all_blklots) 
+as distinct_blklots left join address_blklot on (distinct_blklots.blk_lot = address_blklot.blk_lot) */
 
-    var dbError = function(error){
-      console.log("err querying for evictions: " + error);
-      res.send(500, error)
-    }
+function getAllProperties(){
 
-    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
-      "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
-      [streetName.toUpperCase().trim(), 
-      streetNumber.trim()]).then(function(result) {
-        var query_rows = result.rows;
-        if (query_rows.length > 0) {
-          var addresses = query_rows.map( function(row) {
-            return row.address;
-          });
+  console.log("querying for all evicted properties");
 
+  var ellises = dbQuery("select blklot_ellis.petition, units, landlord, date, protected, dirty_dozen, address, latitude::text || '|' || longitude::text AS loc from blklot_ellis join ellis_act_evictions on (blklot_ellis.petition = ellis_act_evictions.petition) join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
+    []).then(function(result) {
+      var query_rows = result.rows
+      return _.groupBy(query_rows, "loc");
+    });
+
+    var omis = dbQuery("select blklot_omi.petition, unit, date, omi_evictions.address, address_blklot.address, latitude::text || '|' || longitude::text AS loc from blklot_omi join omi_evictions on (blklot_omi.petition = omi_evictions.petition) join address_blklot on (blklot_omi.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
+      []).then(function(result) {
+        var query_rows = result.rows
+        return _.groupBy(query_rows, "loc");
+      });
+
+      var res = Q.all([ellises, omis]).then(function(evictionResults) {
+
+        var allEvictions = {};
+
+        var ellis_act_evictions = evictionResults[0];
+        var omi_evictions = evictionResults[1];
+
+        Object.keys(omi_evictions).forEach(function(key) {
+          var evictions = omi_evictions[key];
+          var latLon = key.split("|");
           var pin = {};
-          pin.addresses = addresses.filter(distinct).sort();
-          pin.lat = query_rows[0].latitude;
-          pin.lon = query_rows[0].longitude;
+          pin.addresses = _.map(evictions, function(eviction){ return eviction.address; }).filter(distinct).sort();
+          pin.lat = latLon[0];
+          pin.lon = latLon[1];
+          evictions = _.uniq(evictions, function(row){
+            return row.petition;
+          });
+          var uniqueOMIs = processOMIEvictions(evictions);
+          allEvictions[key] = addEvictionsToPin([], uniqueOMIs, pin);
+        });
 
-          var blk_lots = query_rows.map( function(row) {
-            return row.blk_lot;
-          }).filter(distinct);
+        Object.keys(ellis_act_evictions).forEach(function(key) {
+          var pin = {};
+            //lookup to see if ellis act evictions already exist
+            if (key in allEvictions) {
+              var existingOMIs = allEvictions[key].evictions;
+              var evictions = _.uniq(ellis_act_evictions[key], function(row){
+                return row.petition;
+              });
+              var uniqueEllises = processEllisActEvictions(evictions);
+              allEvictions[key] = addEvictionsToPin(uniqueEllises, existingOMIs, pin);
+            } else {
+              var evictions = ellis_act_evictions[key];
+              var latLon = key.split("|");
+              pin.addresses = _.map(evictions, function(eviction){ return eviction.address; }).filter(distinct).sort();
+              pin.lat = latLon[0];
+              pin.lon = latLon[1];
+              evictions = _.uniq(evictions, function(row){
+                return row.petition;
+              });
+              var uniqueEllises = processEllisActEvictions(evictions);
+              allEvictions[key] = addEvictionsToPin(uniqueEllises, [], pin);
+            }
+          });
+return allEvictions;
+}, function(error){
+  console.log("err querying for evictions: " + error);
+});
+return res;
+}
 
-          var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
+var allEvictions = getAllProperties();
+
+function property(req, res, next) {
+
+  var dbError = function(error){
+    console.log("err querying for evictions: " + error);
+    res.send(500, error);
+  }
+
+  var query = req.query;
+  var num = query.num;
+  var st = query.st;
+
+  if (num !== undefined && st !== undefined) {
+    getByAddress(num, st, res);
+  } else {
+    allEvictions.then(function (value) {
+      res.send(value);
+    }, dbError);
+  }
+};
+
+function processEllisActEvictions(query_rows) {
+  var evictions = query_rows.map( function(row) {
+    var eviction = {};
+    eviction.date = row.date;
+    eviction.units = row.units;
+    eviction.landlords = (row.landlord || "").split("\n");
+    if (row.protected) {
+      eviction.protected = row.protected;
+    }
+    if (row.dirty_dozen) {
+      eviction.dirty_dozen = row.dirty_dozen;
+    }
+    eviction.eviction_type = "ellis";
+    return eviction;
+  });
+  return evictions.filter(distinct);
+}
+
+function processOMIEvictions(query_rows) {
+  var evictions = query_rows.map( function(row) {
+    var eviction = {};
+    eviction.date = row.date;
+    eviction.address = row.address;
+    if (row.unit) {
+      eviction.unit = row.unit;
+    }
+    eviction.eviction_type = "omi";
+    return eviction;
+  });
+  return evictions;
+}
+
+function addEvictionsToPin(ellises, omis, pin) {
+  var allEvictions = ellises.concat(omis).sort(function(a, b){
+    var keyA = new Date(a.date),
+    keyB = new Date(b.date);
+    if(keyA > keyB) return -1;
+    if(keyA < keyB) return 1;
+    return 0;
+  });
+
+  if (allEvictions.length > 0) {
+    var protected_tenants_array = allEvictions.map(function(eviction){return (eviction.protected || 0) });
+    var protected_tenants = Math.max.apply(null, protected_tenants_array);
+    pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
+    pin.evictions = allEvictions;
+
+    var dirtyDozen = ellises.filter(function(eviction){
+      return eviction.dirty_dozen;
+    });
+
+    if (dirtyDozen.length > 0) {
+      pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
+    }
+  }
+  return pin;
+}
+
+function getByAddress(streetNumber, streetName, res) {
+  console.log('address received: ' + streetNumber + ' ' + streetName);
+
+  var dbError = function(error){
+    console.log("err querying for evictions: " + error);
+    res.send(500, error)
+  }
+
+  dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
+    "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
+    [streetName.toUpperCase().trim(), 
+    streetNumber.trim()]).then(function(result) {
+      var query_rows = result.rows;
+      if (query_rows.length > 0) {
+        var addresses = query_rows.map( function(row) {
+          return row.address;
+        });
+
+        var pin = {};
+        pin.addresses = addresses.filter(distinct).sort();
+        pin.lat = query_rows[0].latitude;
+        pin.lon = query_rows[0].longitude;
+
+        var blk_lots = query_rows.map( function(row) {
+          return row.blk_lot;
+        }).filter(distinct);
+
+        var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
 
           //ellis act evictions
+
           var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.dirty_dozen, ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
             blk_lots).then(function(result) {
               var query_rows = result.rows;
-
-              var evictions = query_rows.map( function(row) {
-                var eviction = {};
-                eviction.date = row.date;
-                eviction.units = row.units;
-                eviction.landlords = row.landlord.split("\n");
-                if (row.protected) {
-                  eviction.protected = row.protected;
-                }
-                if (row.dirty_dozen) {
-                  eviction.dirty_dozen = row.dirty_dozen;
-                }
-                eviction.eviction_type = "ellis";
-                return eviction;
-              });
-
-              var dirtyDozen = evictions.filter(function(eviction){
-                return eviction.dirty_dozen;
-              });
-
-              console.log(dirtyDozen);
-              if (dirtyDozen.length > 0) {
-                console.log(dirtyDozen[0].dirty_dozen);
-                  pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
-              }
-              return evictions;
+              return processEllisActEvictions(query_rows);
             }, dbError);
 
             //omi evictions
+
             var omis = dbQuery("SELECT distinct(omi_evictions.petition), omi_evictions.date, omi_evictions.address, omi_evictions.unit from omi_evictions join blklot_omi on (blklot_omi.petition = omi_evictions.petition) where blklot_omi.blk_lot IN(" + blk_lotParams.join(',') + ')',
               blk_lots).then(function(result) {
                 var query_rows = result.rows;
-                var evictions = query_rows.map( function(row) {
-                  var eviction = {};
-                  eviction.date = row.date;
-                  eviction.address = row.address;
-                  if (row.unit) {
-                    eviction.unit = row.unit;
-                  }
-                  eviction.eviction_type = "omi";
-                  return eviction;
-                });
-                return evictions;
+                return processOMIEvictions(query_rows);
               }, dbError);
 
               Q.all([ellises, omis]).then(function(evictionResults) {
-                var allEvictions = evictionResults[0].concat(evictionResults[1]).sort(function(a, b){
-                  var keyA = new Date(a.date),
-                  keyB = new Date(b.date);
-                  if(keyA > keyB) return -1;
-                  if(keyA < keyB) return 1;
-                  return 0;
-                });
-
-                if (allEvictions.length > 0) {
-                  var protected_tenants_array = allEvictions.map(function(eviction){return (eviction.protected || 0) });
-                  var protected_tenants = Math.max.apply(null, protected_tenants_array);
-                  pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
-                  pin.evictions = allEvictions;
-                }
-                res.send(pin); 
+                res.send(addEvictionsToPin(evictionResults[0], evictionResults[1], pin));
               }, dbError);
 
             } else {
