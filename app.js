@@ -26,7 +26,7 @@ function makePledge(req, res, next) {
     var timestamp = new Date();
 
     //todo: move to db class
-    dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
+    dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)",
       [firstName,
       lastName,
       email,
@@ -63,7 +63,7 @@ function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
     if (reason.length > 1000) {
       pledge.reason = reason.substring(0, 500) + "...";
     } else {
-      pledge.reason = reason; 
+      pledge.reason = reason;
     }
   }
   pledge.timestamp = new Date(timestamp);
@@ -75,7 +75,7 @@ function getPledges(req, res, next) {
   var skip = parseInt(req.params.skip) || 0;
   console.log("skip: " + skip)
   //todo: move to db class
-  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1", 
+  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1",
     [limit, skip],
     function(err, query_rows, results) {
       if (err) {
@@ -91,7 +91,7 @@ function getPledges(req, res, next) {
 }
 
 function getPledgeTotal(req, res, next) {
-  dbQuery("select count(*) from pledges", 
+  dbQuery("select count(*) from pledges",
     [],
     function(err, query_rows, results) {
       if (err) {
@@ -111,7 +111,7 @@ function getPledgeTotal(req, res, next) {
 function propertyById(req, res, next) {
   var blklot = req.params.blklot;
     //todo: move to db class
-    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text", 
+    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text",
       [blklot],
       function(err, query_rows, results) {        //todo: check for result
         var property = {};
@@ -127,20 +127,20 @@ function propertyById(req, res, next) {
   };
 
  /* select distinct on(latitude, longitude) latitude, longitude, address from
-(select distinct(blk_lot) from (select * from blklot_omi union select * from blklot_ellis) as all_blklots) 
+(select distinct(blk_lot) from (select * from blklot_omi union select * from blklot_ellis) as all_blklots)
 as distinct_blklots left join address_blklot on (distinct_blklots.blk_lot = address_blklot.blk_lot) */
 
 function getAllProperties(){
 
   console.log("querying for all evicted properties");
 
-  var ellises = dbQuery("select blklot_ellis.petition, units, landlord, date, protected, dirty_dozen, address, latitude::text || '|' || longitude::text AS loc from blklot_ellis join ellis_act_evictions on (blklot_ellis.petition = ellis_act_evictions.petition) join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
+  var ellises = dbQuery("select blklot_ellis.petition, units, landlord, date, protected, dirty_dozen, address, latitude::text || '|' || longitude::text AS loc from blklot_ellis join ellis_act_evictions on (blklot_ellis.petition = ellis_act_evictions.petition) join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)",
     []).then(function(result) {
       var query_rows = result.rows
       return _.groupBy(query_rows, "loc");
     });
 
-    var omis = dbQuery("select blklot_omi.petition, unit, date, omi_evictions.address, address_blklot.address, latitude::text || '|' || longitude::text AS loc from blklot_omi join omi_evictions on (blklot_omi.petition = omi_evictions.petition) join address_blklot on (blklot_omi.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
+    var omis = dbQuery("select blklot_omi.petition, unit, date, omi_evictions.address, address_blklot.address, latitude::text || '|' || longitude::text AS loc from blklot_omi join omi_evictions on (blklot_omi.petition = omi_evictions.petition) join address_blklot on (blklot_omi.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)",
       []).then(function(result) {
         var query_rows = result.rows
         return _.groupBy(query_rows, "loc");
@@ -297,10 +297,26 @@ function getByAddress(streetNumber, streetName, res) {
     res.send(500, error)
   }
 
-  dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
-    "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
-    [streetName.toUpperCase().trim(), 
-    streetNumber.trim()]).then(function(result) {
+  /*
+  var addresses;
+  var pin = {};
+  var blockLots;
+  Address.where({st_name: streetName, st_type: streetType, addr_num: addrNum}).fetch().then(function(model) {
+    var blockLot = model.get('blk_lot');
+    return Address.where({blk_lot: blockLot}).fetchAll();
+  }).then(function(collection) {
+    addresses = collection.pluck('address');
+    blockLots = collection.pluck('blk_lot').filter(distinct);
+    pin.addresses = addresses.filter(distinct).sort();
+    pin.lat = collection.models[0].get('latitude');
+    pin.lon = collection.models[0].get('longitude');
+  });
+  */
+
+  Address.where({st_name: streetName, st_type: streetType, addr_num: addrNum}).fetch().then(function(model) {
+    var blockLot = model.get('blk_lot');
+    return Address.where({blk_lot: blockLot}).fetchAll();
+  }).then(function(collection) {
       var query_rows = result.rows;
       if (query_rows.length > 0) {
         var addresses = query_rows.map( function(row) {
@@ -364,6 +380,6 @@ server.use(restify.bodyParser());
     console.log('%s listening at %s', server.name, server.url);
   });
 
-  function distinct(value, index, self) { 
+  function distinct(value, index, self) {
     return self.indexOf(value) === index;
   }
