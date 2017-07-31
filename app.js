@@ -4,15 +4,18 @@ var config = require('./config');
 var Q = require('q');
 var _ = require('underscore');
 
-var dbQuery = require('pg-query');
+var pg = require('pg');
+connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
+var pgClient = new pg.Client(connString);
+pgClient.connect();
 
-var connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
-dbQuery.connectionParameters = connString;
+console.log("connection string: ", 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name);
 
 function makePledge(req, res, next) {
   //TODO: check for empty
   if (!req.params || Object.keys(req.params).length === 0) {
-    res.send(400, "pledger info required")
+    res.status(404).send("pledger info required");
+   // res.send(400, "pledger info required")
   } else {
     var params = req.params;
 
@@ -26,7 +29,7 @@ function makePledge(req, res, next) {
     var timestamp = new Date();
 
     //todo: move to db class
-    dbQuery("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
+    pgClient.query("INSERT INTO pledges(first_name, last_name, email, reason, anonymous, pledge_timestamp) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), cast(nullif($4, '') AS text), cast($5 AS boolean), $6)", 
       [firstName,
       lastName,
       email,
@@ -36,7 +39,8 @@ function makePledge(req, res, next) {
       function(err, query_rows, results) {
         if (err) {
           console.log("err inserting pledge: " + err);
-          res.send(500, err);
+          res.status(500).send(err);
+          // res.send(500, err);
         } else {
           var newPledge = constructPledge(anonymous, firstName, lastName, reason, timestamp);
           res.send(newPledge);
@@ -63,7 +67,7 @@ function constructPledge(anonymous, first_name, last_name, reason, timestamp) {
     if (reason.length > 1000) {
       pledge.reason = reason.substring(0, 500) + "...";
     } else {
-      pledge.reason = reason; 
+      pledge.reason = reason;
     }
   }
   pledge.timestamp = new Date(timestamp);
@@ -75,14 +79,15 @@ function getPledges(req, res, next) {
   var skip = parseInt(req.params.skip) || 0;
   console.log("skip: " + skip)
   //todo: move to db class
-  dbQuery("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1", 
+  pgClient.query("select first_name, last_name, reason, anonymous, pledge_timestamp from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1", 
     [limit, skip],
-    function(err, query_rows, results) {
+    function(err, results) {
       if (err) {
         console.log("err retrieving pledges: " + err);
-        res.send(500, err);
+        res.status(500).send(err);
+        // res.send(500, err);
       } else {
-        var pledges = query_rows.map( function(row) {
+        var pledges = results.rows.map(function(row) {
           return constructPledge(row.anonymous, row.first_name, row.last_name, row.reason, row.pledge_timestamp);
         });
         res.send(pledges);
@@ -91,127 +96,29 @@ function getPledges(req, res, next) {
 }
 
 function getPledgeTotal(req, res, next) {
-  dbQuery("select count(*) from pledges", 
+  pgClient.query("select count(*) from pledges", 
     [],
-    function(err, query_rows, results) {
+    function(err, results) {
       if (err) {
         console.log("err retrieving pledge count: " + err);
-        res.send(500, err);
+        res.status(500).send(err);
+        // res.send(500, err);
       } else {
-        if (query_rows.length > 0) {
-          res.send(query_rows[0].count);
+        if (results.rows.length > 0) {
+          res.send(results.rows[0].count);
         } else {
-          res.send(500, "count not found")
+          res.status(500).send("count not found");
+         // res.send(500, "count not found")
         }
       }
     });
 }
 
-
-function propertyById(req, res, next) {
-  var blklot = req.params.blklot;
-    //todo: move to db class
-    dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot = $1:: text", 
-      [blklot],
-      function(err, query_rows, results) {        //todo: check for result
-        var property = {};
-        property.id = blklot;
-        var addresses = query_rows.map( function(row) {
-          return row.address;
-        });
-        property.addresses = addresses;
-        property.lat = query_rows[0].latitude;
-        property.lon = query_rows[0].longitude;
-        res.send(property);
-      });
-  };
-
- /* select distinct on(latitude, longitude) latitude, longitude, address from
-(select distinct(blk_lot) from (select * from blklot_omi union select * from blklot_ellis) as all_blklots) 
-as distinct_blklots left join address_blklot on (distinct_blklots.blk_lot = address_blklot.blk_lot) */
-
-function getAllProperties(){
-
-  console.log("querying for all evicted properties");
-
-  var ellises = dbQuery("select blklot_ellis.petition, units, landlord, date, protected, dirty_dozen, address, latitude::text || '|' || longitude::text AS loc from blklot_ellis join ellis_act_evictions on (blklot_ellis.petition = ellis_act_evictions.petition) join address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
-    []).then(function(result) {
-      var query_rows = result.rows
-      return _.groupBy(query_rows, "loc");
-    });
-
-    var omis = dbQuery("select blklot_omi.petition, unit, date, omi_evictions.address, address_blklot.address, latitude::text || '|' || longitude::text AS loc from blklot_omi join omi_evictions on (blklot_omi.petition = omi_evictions.petition) join address_blklot on (blklot_omi.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)", 
-      []).then(function(result) {
-        var query_rows = result.rows
-        return _.groupBy(query_rows, "loc");
-      });
-
-      var res = Q.all([ellises, omis]).then(function(evictionResults) {
-
-        var allEvictions = {};
-
-        var ellis_act_evictions = evictionResults[0];
-        var omi_evictions = evictionResults[1];
-
-        Object.keys(omi_evictions).forEach(function(key) {
-          var evictions = omi_evictions[key];
-          var latLon = key.split("|");
-          var pin = {};
-          pin.addresses = _.map(evictions, function(eviction){ return eviction.address; }).filter(distinct).sort();
-          pin.lat = latLon[0];
-          pin.lon = latLon[1];
-          evictions = _.uniq(evictions, function(row){
-            return row.petition;
-          });
-          var uniqueOMIs = processOMIEvictions(evictions);
-          allEvictions[key] = addEvictionsToPin([], uniqueOMIs, pin);
-        });
-
-        Object.keys(ellis_act_evictions).forEach(function(key) {
-          var pin = {};
-            //lookup to see if ellis act evictions already exist
-            if (key in allEvictions) {
-              var existingOMIs = allEvictions[key].evictions;
-              var evictions = _.uniq(ellis_act_evictions[key], function(row){
-                return row.petition;
-              });
-              var uniqueEllises = processEllisActEvictions(evictions);
-              allEvictions[key] = addEvictionsToPin(uniqueEllises, existingOMIs, pin);
-            } else {
-              var evictions = ellis_act_evictions[key];
-              var latLon = key.split("|");
-              pin.addresses = _.map(evictions, function(eviction){ return eviction.address; }).filter(distinct).sort();
-              pin.lat = latLon[0];
-              pin.lon = latLon[1];
-              evictions = _.uniq(evictions, function(row){
-                return row.petition;
-              });
-              var uniqueEllises = processEllisActEvictions(evictions);
-              allEvictions[key] = addEvictionsToPin(uniqueEllises, [], pin);
-            }
-          });
-return allEvictions;
-}, function(error){
-  console.log("err querying for evictions: " + error);
-});
-return res;
-}
-
-var allEvictions = getAllProperties();
-var allEvictionsLatLonOnly = allEvictions.then(function (evictions) {
-      return _.values(evictions).map(function(eviction){
-         var latLon = {};
-         latLon.lat = eviction.lat;
-         latLon.lon = eviction.lon;
-         return latLon;
-      });
-    })
-
 function property(req, res, next) {
-
   var dbError = function(error){
     console.log("err querying for evictions: " + error);
-    res.send(500, error);
+    res.status(500).send(error);
+    // res.send(500, error);
   }
 
   var query = req.query;
@@ -231,7 +138,7 @@ function property(req, res, next) {
   }
 };
 
-function processEllisActEvictions(query_rows) {
+function processEvictions(query_rows) {
   var evictions = query_rows.map( function(row) {
     var eviction = {};
     eviction.date = row.date;
@@ -243,28 +150,25 @@ function processEllisActEvictions(query_rows) {
     if (row.dirty_dozen) {
       eviction.dirty_dozen = row.dirty_dozen;
     }
-    eviction.eviction_type = "ellis";
+    if (row.eviction_type) {
+      eviction.eviction_type = row.eviction_type;
+    }
+    if (row.owner_name) {
+      eviction.owner_name = row.owner_name;
+    }
+    if (row.apt) {
+      eviction.apt = row.apt;
+    }
+    if (row.petition) {
+      eviction.petition = row.petition;
+    }
     return eviction;
   });
   return evictions.filter(distinct);
 }
 
-function processOMIEvictions(query_rows) {
-  var evictions = query_rows.map( function(row) {
-    var eviction = {};
-    eviction.date = row.date;
-    eviction.address = row.address;
-    if (row.unit) {
-      eviction.unit = row.unit;
-    }
-    eviction.eviction_type = "omi";
-    return eviction;
-  });
-  return evictions;
-}
-
-function addEvictionsToPin(ellises, omis, pin) {
-  var allEvictions = ellises.concat(omis).sort(function(a, b){
+function addEvictionsToPin(evictions, pin) {
+  var allEvictions = evictions.sort(function(a, b){
     var keyA = new Date(a.date),
     keyB = new Date(b.date);
     if(keyA > keyB) return -1;
@@ -278,13 +182,14 @@ function addEvictionsToPin(ellises, omis, pin) {
     pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
     pin.evictions = allEvictions;
 
-    var dirtyDozen = ellises.filter(function(eviction){
+    var dirtyDozen = evictions.filter(function(eviction){
       return eviction.dirty_dozen;
     });
 
     if (dirtyDozen.length > 0) {
       pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
     }
+
   }
   return pin;
 }
@@ -293,77 +198,726 @@ function getByAddress(streetNumber, streetName, res) {
   console.log('address received: ' + streetNumber + ' ' + streetName);
 
   var dbError = function(error){
-    console.log("err querying for evictions: " + error);
-    res.send(500, error)
+    res.status(500).send(error);
+    // res.send(500, error)
   }
 
-  dbQuery("SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
-    "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
+  // TBD: not working when street_type is empty for example in case '1400 BROADWAY'
+  pgClient.query("SELECT id, address, latitude, longitude FROM properties WHERE (street::text || ' ' || st_type::text) = $1::text and addr_num = $2::integer",
     [streetName.toUpperCase().trim(), 
     streetNumber.trim()]).then(function(result) {
+
       var query_rows = result.rows;
+    //  console.log("result", result);
       if (query_rows.length > 0) {
-        var addresses = query_rows.map( function(row) {
+        
+        var addresses = query_rows.map(function(row) {
           return row.address;
         });
 
         var pin = {};
+        console.log("addresses", addresses);
         pin.addresses = addresses.filter(distinct).sort();
-        pin.lat = query_rows[0].latitude;
-        pin.lon = query_rows[0].longitude;
 
-        var blk_lots = query_rows.map( function(row) {
-          return row.blk_lot;
-        }).filter(distinct);
+        evictions = pgClient.query("SELECT distinct(evictions.petition), evictions.dirty_dozen, evictions.date, evictions.protected, evictions.eviction_type," +
+                  "evictions.landlord, evictions.units, evictions.apt from evictions join properties on (properties.id = evictions.property_id)" + 
+                    " WHERE (properties.street:: text || ' ' || properties.st_type:: text) = $1::text and properties.addr_num = $2::integer",
+                    [streetName.toUpperCase().trim(), 
+                      streetNumber.trim()]).then(function(result) {
+                        var query_rows = result.rows;
+                        return processEvictions(query_rows);
+      }, dbError);
 
-        var blk_lotParams = blk_lots.map(function(item, idx) {return '$' + (idx + 1) +'::text'});
-
-          //ellis act evictions
-
-          var ellises = dbQuery("SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.dirty_dozen, ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
-            blk_lots).then(function(result) {
-              var query_rows = result.rows;
-              return processEllisActEvictions(query_rows);
-            }, dbError);
-
-            //omi evictions
-
-            var omis = dbQuery("SELECT distinct(omi_evictions.petition), omi_evictions.date, omi_evictions.address, omi_evictions.unit from omi_evictions join blklot_omi on (blklot_omi.petition = omi_evictions.petition) where blklot_omi.blk_lot IN(" + blk_lotParams.join(',') + ')',
-              blk_lots).then(function(result) {
-                var query_rows = result.rows;
-                return processOMIEvictions(query_rows);
+        Q.all(evictions).then(function(evictionResults) {
+                res.send(addEvictionsToPin(evictionResults, pin));
               }, dbError);
 
-              Q.all([ellises, omis]).then(function(evictionResults) {
-                res.send(addEvictionsToPin(evictionResults[0], evictionResults[1], pin));
-              }, dbError);
-
-            } else {
-              res.send(404);
-            }
-          }, dbError);
+      } else {
+        res.status(404).send(error);
+      }
+  }, dbError);
 }
 
-var server = restify.createServer();
+var express    = require('express'),
+fileUpload = require('express-fileupload');
+app        = express();
 
-server.use(restify.queryParser());
-server.use(restify.fullResponse());
-server.use(restify.bodyParser());
+// default options
+app.use(fileUpload());
+app.use('/styles', express.static(__dirname));
 
-  //ummm?
-  server.use(restify.CORS());
+app.use(function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});
 
-  server.get('/properties', property);
-  server.get('/properties/:blklot', propertyById);
+app.post('/upload', function(req, res) {
+ console.log('dry run', req.body.dryRun);
+  var sampleFile, uploadPath;
+  if (!req.files) {
+    res.status(400).send('No files were uploaded.');
+    return;
+  } 
+ 
+  sampleFile = req.files.sampleFile;
+  if (sampleFile == undefined) {
+    res.status(500).send("The imported file is empty.");
+    return;
+  }
+  uploadPath = __dirname + '/uploadedfiles/' + sampleFile.name;
 
-  server.post('/pledges', makePledge);
-  server.get('/pledges', getPledges);
-  server.get('/pledges/total', getPledgeTotal);
+  if (!fs.existsSync(__dirname + '/uploadedfiles/')){
+      fs.mkdirSync(__dirname + '/uploadedfiles/');
+  }
+  sampleFile.mv(uploadPath, function(err) {
+    if (err) {
+      res.status(400).send(err);
+    }
+    else {
+        if (GetExtension(sampleFile.name) !== 'CSV'){
+          res.status(500).send("The imported file is not of CSV type.");
+        } else {
+          ProcessCSV(uploadPath, sampleFile.name, res, req.body.dryRun);
+        }
+    }
+  });
+});
 
-  server.listen(process.env.PORT || 8888, function() {
-    console.log('%s listening at %s', server.name, server.url);
+var pg = require('pg');
+var fs = require('fs');
+var GeoJSON = require('geojson');
+
+// JOI
+const BaseJoi = require('joi');
+const Extension = require('joi-date-extensions');
+const joi = BaseJoi.extend(Extension);
+
+function GetExtension(filename) {
+  if (filename.indexOf('.') !== -1) {
+    var parts = filename.split('.');
+    return parts[parts.length - 1].toUpperCase();
+  }
+  return '';
+}
+
+let schemaAddresses = {
+
+    'EAS BaseID': joi.number().allow(''),
+    'EAS SubID': joi.number().allow(''),
+    'CNN': joi.string().allow(''),
+    'Address': joi.string(),
+    'Address Number': joi.number(),
+    'Address Number Suffix': joi.string().allow(''),
+    'Street Name': joi.string(),
+    'Street Type': joi.string().allow(''),
+    'Unit Number': joi.string().allow(''),
+    'Zipcode': joi.string().allow(''),
+    'Block Lot': joi.string().allow(''),
+    'Longitude': joi.number().allow(''),
+    'Latitude': joi.number().allow(''),
+    'Location': joi.string().allow(''),
+
+ };
+
+function ProcessCSV(uploadPath, fileName, res, isDryRun) {
+  if (fileName === 'addresses.csv') {
+    getNumberOfLines(String(uploadPath), function(numberOfLines) {
+        ProcessAddresses(uploadPath, res, isDryRun, numberOfLines);
+     });
+  } else {
+    if (fileName === 'evictions.csv') { 
+     getNumberOfLines(String(uploadPath), function(numberOfLines) {
+        ProcessTempEvictions(uploadPath, res, isDryRun, numberOfLines);
+     });
+    }
+    else {
+      if (fileName === 'owners.csv') {
+        getNumberOfLines(String(uploadPath), function(numberOfLines) {
+            ProcessOwners(uploadPath, res, isDryRun, numberOfLines);
+         });
+      }
+      else {
+        res.status(500).send("Import file should have one of the following names: addresses.csv, evictions.csv or owners.csv. Please rename.");
+      }
+    }
+  }
+}
+
+let schemaOwners = {
+    
+    'owner_name': joi.string().required(),
+    'address': joi.string().required(),
+    'owner_mailing_address': joi.string().required(),
+
+ };
+
+function ProcessOwners(uploadPath, res, isDryRun, numberOfLines) {
+  const csvFilePath = String(uploadPath);
+  console.log('csvFilePath', csvFilePath);
+  const csv = require('csvtojson');
+  errorMessage = {};
+  csv()
+    .fromFile(csvFilePath)
+      .on('json',(jsonObj, rowIndex)=>{
+      // console.log('rowIndex', rowIndex);
+      // combine csv header row and csv line to a json object 
+      // jsonObj.a ==> 1 or 4 
+      var data = joi.validate(jsonObj, schemaOwners, {allowUnknown : true, abortEarly: false });
+      let rowNumber = rowIndex + 2;
+      if (data.error) {
+        errorMessage[rowNumber] = data.error.details;
+      } else {
+        var isDry = (isDryRun == 'true');
+        var property_id;
+
+
+        let promiseToSelectPropertyID = function() {
+          return new Promise(function (resolve, reject) {
+            var address = jsonObj.address.toUpperCase();
+            pgClient.query("SELECT id FROM properties WHERE address = $1 LIMIT 1", [address],
+              function(err, result) {
+                if (err) {
+                  console.log("err selecting property id: " + err);
+                  errorMessage[rowNumber] = err;
+                  reject(errorMessage);
+                } else {
+                    if (result.rows.length  > 0){
+                      property_id = result.rows[0].id;
+                      resolve(result.rows[0].id);
+                    }
+                    else {
+                      errorMessage[rowNumber] = "The " +  jsonObj.address + " address is not found in properties table. Please import it into addresses.csv file first.";
+                      reject(errorMessage);
+                    }
+                 }
+              });
+          });
+        }
+
+        let promiseToCheckoOwnerNotExist = function(property_id) {
+          return new Promise(function (resolve, reject) {
+            var owner_id;
+            pgClient.query("SELECT id FROM owners WHERE owner_name = $1 AND owner_mail_address = $2", [jsonObj['owner_name'], jsonObj['owner_mailing_address']],
+              function(err, result) {
+                if (err) {
+                  console.log("err selecting owner id: " + err);
+                  errorMessage[rowNumber] = err;
+                  reject(errorMessage);
+                } else {
+                    if (result.rows.length  > 0){
+                      owner_id = result.rows[0].id;
+                      reject([owner_id, property_id]);
+                    }
+                    else {
+                      resolve();
+                    }
+                }
+            });
+          });
+        }
+
+        let promiseToCheckOwnerToPropertyNotExist = function(owner_id, property_id) {
+          return new Promise (function (resolve, reject) {
+            pgClient.query("SELECT * FROM owner_to_property WHERE owner_id = $1 AND property_id = $2", [owner_id, property_id],
+              function(err, result) {
+                if (err) {
+                  console.log("err selecting owner_to_property: " + err);
+                  errorMessage[rowNumber] = err;
+                  reject(errorMessage);
+                } else {
+                    if (result.rows.length  > 0){
+                      errorMessage[rowNumber] = jsonObj['owner_name'] + " is registered for " + jsonObj['address'] + " address.";
+                      reject(errorMessage);
+                    }
+                    else {
+                      resolve();
+                    }
+                }
+            });
+          });
+        }
+
+        promiseToSelectPropertyID().then(function(property_id) {
+          promiseToCheckoOwnerNotExist(property_id).then(function() {
+            InsertOwner(function(owner_id) {
+              promiseToCheckOwnerToPropertyNotExist(owner_id, property_id).then(function(){
+                InsertOwnerToProperty(owner_id, property_id);
+              }).catch(function(){
+                sendMessage(errorMessage);
+              });
+            });
+          }).catch(function(values){
+            promiseToCheckOwnerToPropertyNotExist(values[0], values[1]).then(function(){
+              InsertOwnerToProperty(values[0], values[1]);
+            }).catch(function(){
+              sendMessage(errorMessage);
+            });
+          });
+        }).catch(function(){
+          sendMessage(errorMessage);
+        });
+
+        let InsertOwner = function(callback){
+          if (! isDry) {
+            pgClient.query("INSERT INTO owners(owner_name, owner_mail_address) VALUES ($1, $2) RETURNING id", [jsonObj['owner_name'], jsonObj['owner_mailing_address']],
+                function(err, result) {
+                  if (err) {
+                    console.log("err inserting owner: " + err);
+                    errorMessage[rowNumber] = err;
+                  } else {
+                    console.log('result', result.rows[0].id);  
+                    callback(result.rows[0].id);
+                  }
+            });
+          }
+          sendMessage(errorMessage);
+        }
+
+        let InsertOwnerToProperty = function(owner_id, property_id) {
+          if (! isDry) {
+             let today = getDate();
+             pgClient.query("INSERT INTO owner_to_property (owner_id, property_id, date) VALUES ($1, $2, CAST($3 AS DATE))", [owner_id, property_id, today],
+                function(err, result) {
+                  if (err) {
+                    console.log("err inserting owner_to_property: " + err);
+                    errorMessage[rowNumber] = err;
+                  }
+              });     
+          }
+          sendMessage(errorMessage);
+        }
+
+        let sendMessage = function(errorMessage) {
+          if (rowNumber == numberOfLines) {
+            if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+              res.status(500).send(errorMessage);
+            } else {
+              res.status(200).send('The data was successfully parsed.');
+            }
+          }
+        }
+
+      }
+    })
+    .on('done',(error)=>{
+        if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+          res.status(500).send(errorMessage);
+        }
+    })
+}
+
+// Add data to properties and owners tables.
+function ProcessAddresses(uploadPath, res, isDryRun, numberOfLines) {
+
+  const csvFilePath = String(uploadPath);
+  console.log('csvFilePath', csvFilePath);
+  const csv = require('csvtojson');
+  var i = 1;
+  errorMessage = {};
+  csv()
+    .fromFile(csvFilePath)
+      .on('json',(jsonObj, rowIndex)=>{
+      // combine csv header row and csv line to a json object 
+      // jsonObj.a ==> 1 or 4 
+      var data = joi.validate(jsonObj, schemaAddresses, { abortEarly: false });
+      let rowNumber = rowIndex + 2;
+      if (data.error) {
+        errorMessage[rowNumber] = data.error.details;
+      } else {
+          let isDry = (isDryRun == 'true');
+              
+          let checkIfPropertyNotExist = function() {
+            return new Promise (function (resolve, reject) {
+              let property_id;
+              let address = jsonObj['Address'].toUpperCase();
+              console.log(address, jsonObj['Block Lot']);
+              pgClient.query("SELECT id FROM properties WHERE address = $1 AND blklot = $2", [address, jsonObj['Block Lot']],
+                function(err, result) {
+                  if (err) {
+                    console.log("err selecting property id: " + err);
+                    errorMessage[rowNumber] = err;
+                    reject(errorMessage);
+                  } else {
+                      if (result.rows.length  > 0){
+                        errorMessage[rowNumber] = "There is a property registered with " + jsonObj['Block Lot'] + " blklot and " + jsonObj['Address'] + " address.";
+                        console.log(errorMessage[rowNumber]);
+                        reject(errorMessage);
+                      }
+                      else {
+                        resolve();
+                      }
+                   }
+                });
+            })
+         }
+
+        let insertToProperty = function(){
+          if (! isDry) {
+            pgClient.query("INSERT INTO properties(blklot, street, st_type, addr_n_sfx, addr_num, address, latitude, longitude, unit_num, zipcode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+                  [jsonObj['Block Lot'], jsonObj['Street Name'], jsonObj['Street Type'], jsonObj['Address Number Suffix'], jsonObj['Address Number'], jsonObj['Address'], jsonObj['Latitude'], jsonObj['Longitude'], jsonObj['Unit Number'], jsonObj['Zipcode']],
+                  function(err, query_rows, results) {
+                    if (err) {
+                      errorMessage[i] = "err inserting properties: " + err;
+                      console.log("err inserting properties: " + err);
+                    } else {
+                      console.log("success inserting properties!!!");
+                    }
+            });
+          }
+          sendMessage(errorMessage);
+        }
+
+        checkIfPropertyNotExist().then(function() {
+          insertToProperty();
+        }).catch(function(errorMessage){
+          sendMessage(errorMessage);
+        });
+
+        let sendMessage = function(errorMessage) {
+          if (rowNumber == numberOfLines) {
+            if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+              res.status(403).send(errorMessage);
+            } else {
+              res.status(200).send('The data was successfully parsed.');
+            }
+          }
+        }
+
+      }
+    })
+    .on('done',(error)=>{
+        if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+          res.status(403).send(errorMessage);
+        }
+        console.log('end');
+    })
+}
+
+let schemaEvictions = {
+
+    'the_geom': joi.string().allow('').required(),
+    'petition': joi.string().allow('').required(),
+    'date': joi.date().allow('').required(),
+    'month': joi.number().integer().min(1).max(12).required(),
+    'day': joi.number().integer().min(1).max(31).required(),
+    'year': joi.number().integer().min(1990).max(2100).required(),
+    'type': joi.string().required(),
+    'address': joi.string().required(),
+    'apt': joi.string().allow('').required(),
+    'Zip': joi.string().allow('').required(),
+    'units': joi.string().allow('').required(),
+    'blk_lot': joi.string().allow('').required(),
+    'owner': joi.string().allow('').required(),
+    'people involved': joi.string().allow('').required(),
+    'yearbuilt': joi.number().integer().positive().allow('').required(),
+    'latitude': joi.number().allow('').required(),
+    'longitude': joi.number().allow('').required(),
+
+/*    landlord: joi.number().allow('').required(),
+    protected: joi.number().integer().positive().required(),
+    dirty_dozen: joi.string().allow('').required(),*/
+    
+    /*petition: joi.string().required(), // joi.string().allow('').required(),
+    date: joi.date().format('YYYY-MM-DD').required(), // joi.date().format('YYYY-MM-DD').allow('').required(), // joi.date().allow('').required(), 
+    */
+
+ };
+
+function getNumberOfLines(filePath, callback) {
+  var i;
+  var count = 0;
+  require('fs').createReadStream(filePath) // process.argv[2]
+    .on('data', function(chunk) {
+      for (i=0; i < chunk.length; ++i)
+        if (chunk[i] == 10) count++;
+    })
+    .on('end', function() {
+      console.log("count = ", count);
+      return callback(++count);
+    });
+}
+
+
+// Add data to evictions table.
+function ProcessTempEvictions(uploadPath, res, isDryRun, numberOfLines) {
+  const csvFilePath = String(uploadPath);
+  console.log('csvFilePath', csvFilePath);
+  const csv = require('csvtojson');
+  errorMessage = {};
+  csv()
+    .fromFile(csvFilePath)
+      .on('json',(jsonObj, rowIndex)=>{
+      // combine csv header row and csv line to a json object 
+      // jsonObj.a ==> 1 or 4 
+      var data = joi.validate(jsonObj, schemaEvictions, { abortEarly: false });
+      let rowNumber = rowIndex + 2;
+      if (data.error) {
+        errorMessage[rowNumber] = data.error.details;
+      } else {
+        let isDry = (isDryRun == 'true');
+        let address = modifyAddress(jsonObj['address']);
+        let date =  jsonObj['date'];
+        let property_id;
+
+        let selectPropertyId = function(callback) {
+          return new Promise (function (resolve, reject) {
+            pgClient.query("SELECT id FROM properties WHERE addr_num = $1 AND street = $2 LIMIT 1", [getAddressNumber(address), getAddressStreet(address)],
+              function(err, result) {
+                console.log("test", getAddressNumber(address), getAddressStreet(address));
+                if (err) {
+                  console.log("err selecting property id: " + err);
+                  errorMessage[rowNumber] = err;
+                  reject(errorMessage);
+                } else {
+                    if (result.rows.length  > 0){
+                      property_id = result.rows[0].id;
+                      console.log("property_id", property_id);
+                      resolve(property_id);
+                    } else {
+                      errorMessage[rowNumber] = jsonObj['address'] + " address is not found in properties table. Please import it into addresses.csv file first.";
+                      console.log(errorMessage[rowNumber]);
+                      reject(errorMessage);
+                    }
+                }
+            });
+          });
+        }
+
+        let checkIfNotExistEviction = function(property_id) {
+          return new Promise (function (resolve, reject) {
+            pgClient.query("SELECT * FROM evictions WHERE petition = $1 AND date = $2 AND property_id = $3 LIMIT 1", [jsonObj['petition'], jsonObj['date'], property_id],
+              function(err, result) {
+                if (err) {
+                  console.log("err selecting eviction: " + err);
+                  errorMessage[rowNumber] = err;
+                  reject(errorMessage);
+                } else {
+                    if (result.rows.length > 0){
+                      errorMessage[rowNumber] = "There is an eviction registered for " + jsonObj['address'] + ' and ' + jsonObj['date'] + " date.";
+                      console.log(errorMessage);
+                      reject(errorMessage);
+                    } else {
+                      resolve(property_id);
+                    }
+                }
+            });
+          });          
+        }
+
+        let insertEviction = function(property_id) {
+          if (! isDry) {
+            let arr = [];
+            arr = getEvictionTypes(jsonObj['type']);
+            arr.forEach(function(item) {
+                pgClient.query("INSERT INTO evictions(petition, units, landlord, date, dirty_dozen, eviction_type, property_id) VALUES (cast(nullif($1, '') AS text), cast(nullif($2, '') AS text), cast(nullif($3, '') AS text), CAST($4 AS DATE), cast(nullif($5, '') AS text), cast(nullif($6, '') AS text), $7)",
+                    [jsonObj.petition, jsonObj.units, jsonObj.owner, date, jsonObj.dirty_dozen, item, property_id],
+                  function(err, query_rows, results) {
+                    if (err) {
+                      errorMessage[rowNumber] = err;
+                      console.log("err inserting eviction: " + err);
+                    }
+                });
+            });
+          }
+          sendMessage(errorMessage);
+        }
+
+        selectPropertyId().then(function(property_id){
+          checkIfNotExistEviction(property_id).then(function() {
+            insertEviction(property_id);
+          }).catch(function(errorMessage){
+            sendMessage(errorMessage);
+          });
+        }).catch(function(errorMessage){
+          sendMessage(errorMessage);
+        });
+
+        let sendMessage = function(errorMessage) {
+          if (rowNumber == numberOfLines) {
+            if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+              res.status(500).send(errorMessage);
+            } else {
+              res.status(200).send('The data was successfully parsed.');
+            }
+          }
+        }
+      }
+    })
+    .on('done',(error)=>{
+        if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+          res.status(500).send(errorMessage);
+        }
+        console.log('end');
+    })
+}
+
+function getDate() {
+  
+  var today = new Date();
+  var dd = today.getDate();
+  var mm = today.getMonth()+1; //January is 0!
+  var yyyy = today.getFullYear();
+
+  if(dd < 10) {
+      dd = '0'+dd
+  } 
+
+  if(mm < 10) {
+      mm = '0'+mm
+  } 
+
+  return yyyy + '-' + mm + '-' + dd;
+
+}
+
+app.get('/properties', property);
+
+app.post('/pledges', makePledge);
+app.get('/pledges', getPledges);
+app.get('/pledges/total', getPledgeTotal);
+
+app.listen(process.env.PORT || 8888, function() {
+  console.log('Express server listening on port ', process.env.PORT || 8888);
+})
+
+function distinct(value, index, self) { 
+  return self.indexOf(value) === index;
+}
+
+function modifyAddress(evictionAddress) {
+  var address = evictionAddress.trim().toUpperCase();
+  var array = [];
+  array = address.split(" ");
+
+  var lastIndex = address.lastIndexOf(' ');
+  var firstIndex = address.indexOf(' ');
+  var addressNumber = address.substring(0, firstIndex);
+  var streetName = address.substring(firstIndex + 1, lastIndex);
+  var streetType = address.substring(lastIndex + 1);
+
+/*  console.log('streetName', streetName);
+  console.log('addressNumber', addressNumber);
+  console.log('streetType', streetType);*/
+
+  // console.log("address", addressNumber + " " + streetName + " " + streetType);
+
+  if (array.length - 1 < 2) {
+    return address;
+  } else {
+    if (streetType.indexOf('AVENUE') !== -1) {
+      streetType = streetType.replace('AVENUE', 'AVE');
+    }
+    else if (streetType.indexOf('STREET') !== -1) {
+      streetType = streetType.replace('STREET', 'ST');
+    }
+    else if (streetType.indexOf('HIGHWAY') !== -1) {
+      streetType = streetType.replace('HIGHWAY', 'HWY');
+    }
+    else if (streetType.indexOf('COURT') !== -1) {
+      streetType = streetType.replace('COURT', 'CT');
+    }
+    else if (streetType.indexOf('CIRCLE') !== -1) {
+      streetType = streetType.replace('CIRCLE', 'CIR');
+    }
+    else if (streetType.indexOf('DRIVE') !== -1) {
+      streetType = streetType.replace('DRIVE', 'DR');
+    }
+    else if (streetType.indexOf('PLACE') !== -1) {
+      streetType = streetType.replace('PLACE', 'PL');
+    }
+    else if (streetType.indexOf('BOULEVARD') !== -1) {
+      streetType = streetType.replace('BOULEVARD', 'BLVD');
+    }
+    else if (streetType.indexOf('ALLEY') !== -1) {
+      streetType = streetType.replace('ALLEY', 'ALY');
+    }
+    else if (streetType.indexOf('TERRACE') !== -1) {
+      streetType = streetType.replace('TERRACE', 'TER');
+    }
+    else if (streetType.indexOf('STAIRWAY') !== -1) {
+      streetType = streetType.replace('STAIRWAY', 'STWY');
+    }
+    else if (streetType.indexOf('LANE') !== -1) {
+      streetType = streetType.replace('LANE', 'LN');
+    }
+    else if (streetType.indexOf('PLAZA') !== -1) {
+      streetType = streetType.replace('PLAZA', 'PL');
+    }
+    else if (streetType.indexOf('ROAD') !== -1) {
+      streetType = streetType.replace('ROAD', 'RD');
+    }
+    else if (streetType.indexOf('HILL') !== -1) {
+      streetType = streetType.replace('HILL', 'HL');
+    }
+    return addressNumber + " " + streetName + " " + streetType;
+  }
+}
+
+function getAddressNumber(evictionAddress) {
+  
+  var address = evictionAddress.trim().toUpperCase();
+  var lastIndex = address.lastIndexOf(' ');
+  var firstIndex = address.indexOf(' ');
+  var addressNumber = address.substring(0, firstIndex);
+
+  return parseInt(addressNumber);
+}
+
+function getAddressStreet(evictionAddress) {
+  
+  var address = evictionAddress.trim().toUpperCase();
+  var lastIndex = address.lastIndexOf(' ');
+  var firstIndex = address.indexOf(' ');
+  var streetName = address.substring(firstIndex + 1, lastIndex);
+
+  return streetName;
+}
+
+function getEvictionTypes(evictionType) {
+  
+  // Non Payment - Non-payment of Rent
+  // Breach - Breach of Lease Agreement
+  // Nuisance - Nuisance
+  // Illegal Use - Illegal Use of Unit
+  // Failure to Sign Renewal - Failure to Sign Lease Renewal
+  // Access Denial - Denial of Access to Unit
+  // Unapproved Subtenant - Unapproved Subtenant
+  // Owner Move In - Owner move in, omi
+  // Demolition - Demolition
+  // Capital Improvement - Capital Improvement
+  // Substantial Rehab - Substantial Rehabilitation
+  // Ellis Act WithDrawal - Ellis Act WithDrawal, ellis
+  // Condo Conversion - Condo Conversion
+  // Roommate Same Unit - Roommate Living in Same Unit
+  // Other Cause - Other
+  // Late Payments - Habitual Late Payment of Rent
+  // Lead Remediation - Lead Remediation
+  // Development - Development Agreement
+  // Good Samaritan Ends - Good Samaritan Tenancy Ends
+  var eviction = evictionType.toUpperCase();
+/*  var array = ["NON-PAYMENT OF RENT", "BREACH OF LEASE AGREEMENT", "NUISANCE", "ILLEGAL USE OF UNIT", "FAILURE TO SIGN LEASE RENEWAL", "DENIAL OF ACCESS TO UNIT",
+              "UNAPPROVED SUBTENANT", "OWNER MOVE IN", "OMI", "DEMOLITION", "CAPITAL IMPROVEMENT", "SUBSTANTIAL REHABILITATION", "ELLIS ACT WITHDRAWAL",
+              "ELLIS", "CONDO CONVERSION", "ROMMATE LIVING IN SAME UNIT", "OTHER", "HABITUAL LATE PAYMENT OF RENT", "LEAD REMEDIATION", "DEVELOPMENT AGREEMENT",
+              "GOOD SAMARITAN TENANCY ENDS"];*/
+
+  var obj = {"NON-PAYMENT OF RENT": "Non Payment", "BREACH OF LEASE AGREEMENT": "Breach", "NUISANCE": "Nuisance", "ILLEGAL USE OF UNIT": "Illegal Use",
+          "FAILURE TO SIGN LEASE RENEWAL": 'Failure to Sign Renewal', "DENIAL OF ACCESS TO UNIT": "Access Denial", "UNAPPROVED SUBTENANT": "Unapproved Subtenant",
+          "OWNER MOVE IN": "Owner Move In", "omi": "Owner Move In", "DEMOLITION": "Demolition", "CAPITAL IMPROVEMENT": "Capital Improvement", 
+          "SUBSTANTIAL REHABILITATION": "Substantial Rehab", "ELLIS ACT WITHDRAWAL": "Ellis Act WithDrawal", "ELLIS": "Ellis Act WithDrawal", 
+          "CONDO CONVERSION": "Condo Conversion", "ROMMATE LIVING IN SAME UNIT": "Roommate Same Unit", "OTHER": "Other Cause", "HABITUAL LATE PAYMENT OF RENT": "Late Payments",
+          "LEAD REMEDIATION": "Lead Remediation", "DEVELOPMENT AGREEMENT": "Development", "GOOD SAMARITAN TENANCY ENDS": "Good Samaritan Ends"};
+
+  var array = Object.keys(obj);
+  var result = [];
+
+  result = array.filter(function(strEviction) {
+    return eviction.indexOf(strEviction) !== -1;
   });
 
-  function distinct(value, index, self) { 
-    return self.indexOf(value) === index;
-  }
+  result = result.map(function(strEviction) {
+    return obj[strEviction];
+  });
+
+  return result;
+}
