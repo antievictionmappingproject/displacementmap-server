@@ -1,0 +1,234 @@
+const config = require('../config');
+const knex = require('knex')({
+  client: 'pg',
+  connection: {
+    host     : config.db.host,
+    user     : config.db.user,
+    password : config.db.pass,
+    database : config.db.name,
+    charset  : 'utf8'
+  }
+});
+const objection = require('objection');
+const Model = objection.Model;
+
+Model.knex(knex);
+
+// ellis_act_evictions - actual ellis act evictions
+function Ellis(){
+  Model.apply(this, arguments);
+}
+Ellis.tableName = 'ellis_act_evictions';
+Ellis.idColumn = 'petition';
+Model.extend(Ellis);
+
+// blklot_ellis - join table
+function BlockLotEllis(){
+  Model.apply(this, arguments);
+}
+BlockLotEllis.tableName = 'blklot_ellis';
+BlockLotEllis.idColumn = ['blk_lot', 'petition'];
+Model.extend(BlockLotEllis);
+
+// address_blklot - physical addresses
+function AddressBlocklot(){
+  Model.apply(this, arguments);
+}
+AddressBlocklot.tableName = 'address_blklot';
+AddressBlocklot.idColumn = 'blk_lot';
+Model.extend(AddressBlocklot);
+
+Ellis.relationMappings = {
+  address: {
+    relation: Model.HasManyRelation,
+    modelClass: AddressBlocklot,
+    join: {
+      from: 'ellis_act_evictions.petition',
+      through: {
+        modelClass: BlockLotEllis
+      },
+      to: 'address_blklot.blk_lot'
+    }
+  }
+};
+
+// omi_evictions - actual owner move-in evictions
+function Omi(){
+  Model.apply(this, arguments);
+}
+Omi.tableName = 'omi_evictions';
+Omi.idColumn = 'petition';
+Model.extend(Omi);
+
+// blklot_omi - join table
+function BlockLotOmi(){
+  Model.apply(this, arguments);
+}
+BlockLotOmi.tableName = 'blklot_omi';
+BlockLotOmi.idColumn = ['blk_lot', 'petition'];
+Model.extend(BlockLotOmi);
+
+
+let ellisPromise = Ellis.
+  query().
+  select('ellis_act_evictions.petition', 'ellis_act_evictions.units', 'ellis_act_evictions.landlord', 'ellis_act_evictions.date', 'ellis_act_evictions.protected', 'ellis_act_evictions.dirty_dozen',
+   'address_blklot.address', 'address_blklot.latitude', 'address_blklot.longitude').
+  join('blklot_ellis', 'ellis_act_evictions.petition', 'blklot_ellis.petition').
+  join('address_blklot', 'blklot_ellis.blk_lot', 'address_blklot.blk_lot').
+  orderByRaw('address_blklot.latitude, address_blklot.longitude');
+
+
+let omiPromise = Omi.
+  query().
+  select('omi_evictions.petition', 'omi_evictions.unit', 'omi_evictions.date', 'omi_evictions.address', 'address_blklot.address', 'address_blklot.latitude', 'address_blklot.longitude').
+  join('omi_evictions', 'blklot_omi.petition', 'omi_evictions.petition').
+  join('address_blklot', 'blklot_omi.blk_lot', 'address_blklot.blk_lot').
+  orderByRaw('address_blklot.latitude', 'address_blklot.longitude');
+
+Promise.all([omiPromise, ellisPromise]).then(evictionResults => {
+  results = evictionResults;
+})
+// var e = new Ellis;
+var addresses;
+// e.$relatedQuery('address').then(a => addresses = a)
+Ellis.query().select('ellis_act_evictions.petition', 'ellis_act_evictions.units', 'ellis_act_evictions.landlord', 'ellis_act_evictions.date', 'ellis_act_evictions.protected', 'ellis_act_evictions.dirty_dozen').eager('address').then(a => addresses = a)
+// blklot_ellis.petition, ellis_act_evictions.units, ellis_act_evictions.landlord, ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.dirty_dozen, address_blklot.address, address_blklot.latitude, address_blklot.longitude"
+/*
+Person
+  .query()
+  .select('Person.*', 'Parent.firstName as parentFirstName')
+  .join('Person as Parent', 'Person.parentId', 'Parent.id')
+  .where('Person.age', '<', Person.query().avg('Person.age'))
+  .whereExists(Animal.query().select(1).whereRef('Person.id', 'Animal.ownerId'))
+  .orderBy('Person.lastName')
+  .then(function (people) {
+    console.log(people[0].parentFirstName);
+  });
+*/
+
+// Ellis.relationMappings = {
+//   blockLotEllises: {
+//     relation: Model.HasManyRelation,
+//     modelClass: BlockLotEllis,
+//     join: {
+//       from: 'Ellis.petition',
+//       to: 'BlockLotEllis.petition'
+//     }
+//   }
+// };
+// BlockLotEllis.relationMappings = {
+//   ellisActEviction: {
+//     relation: Model.BelongsToOneRelation,
+//     modelClass: Ellis,
+//     join: {
+//       from: 'BlockLotEllis.petition',
+//       to: 'Ellis.petition'
+//     }
+//   }
+// };
+
+/*
+Person.idColumn = ['firstName', 'lastName', 'dateOfBirth'];
+Person.relationMappings = {
+  pets: {
+    relation: Model.BelongsToOneRelation,
+    modelClass: Animal,
+    join: {
+      from: [
+        'Person.firstName',
+        'Person.lastName',
+        'Person.dateOfBirth'
+      ],
+      to: [
+        'Animal.ownerFirstName',
+        'Animal.ownerLastName',
+        'Animal.ownerDateOfBirth'
+      ]
+    }
+  }
+};
+*/
+
+
+
+// var Ellis = bookshelf.Model.extend({
+//   tableName: 'ellis_act_evictions',
+//   idAttribute: 'petition',
+//   addresses: function() {
+//     return this.belongsToMany(Address).through(BlockLotEllis, 'petition', 'blk_lot');
+//   }
+// });
+// var Ellises = bookshelf.Collection.extend({
+//     model: Ellis
+// });
+//
+// var Address = bookshelf.Model.extend({
+//   tableName: 'address_blklot',
+//   idAttribute: 'blk_lot',
+//   ellisEvictions: function() {
+//     return this.belongsToMany(Ellis).through(BlockLotEllis);
+//   }
+// });
+// var Addresses = bookshelf.Collection.extend({
+//     model: Address
+// });
+//
+// var BlockLotEllis = bookshelf.Model.extend({
+//   tableName: 'blklot_ellis',
+//   idAttribute: 'petition',
+//   ellisEviction: function() {
+//     return this.belongsTo(Ellis, 'petition');
+//   },
+//   addresses: function() {
+//     debugger
+//     return this.belongsToMany(Address, 'address_blklot', 'blk_lot', 'blk_lot');
+//   }
+// });
+//
+// var BlockLotEllises = bookshelf.Collection.extend({
+//     model: BlockLotEllis
+// });
+//
+//
+// exports.Ellis = Ellis;
+// exports.Address = Address;
+// exports.BlockLotEllis = BlockLotEllis;
+// exports.Ellises = Ellises;
+// exports.Addresses = Addresses;
+// exports.BlockLotEllises = BlockLotEllises;
+
+/*
+addr = new Address({st_name: 'BUCHANAN', st_type: 'ST', addr_num: 1010}).fetch()
+
+new Ellis({petition: 'L071209'}).fetch()
+
+Address
+  .query({where: {st_name: 'BUCHANAN', st_type: 'ST', addr_num: 1010}})
+  .fetchOne({columns: ['blk_lot', 'address', 'latitude', 'longitude'] });
+"SELECT blk_lot, address, latitude, longitude FROM address_blklot WHERE blk_lot IN " +
+  "(SELECT blk_lot FROM address_blklot WHERE (st_name:: text || ' ' || st_type:: text) = $1::text and addr_num = $2::integer)",
+  [streetName.toUpperCase().trim(),
+  streetNumber.trim()]).then(fun
+
+new Address.where('blk_lot', 'IN', )
+
+var streetName = 'BUCHANAN'.toUpperCase().trim()
+var streetType = 'ST'.toUpperCase().trim()
+var addrNum = 1010;
+
+"SELECT distinct(ellis_act_evictions.petition), ellis_act_evictions.dirty_dozen, ellis_act_evictions.date, ellis_act_evictions.protected, ellis_act_evictions.landlord, ellis_act_evictions.units from ellis_act_evictions join blklot_ellis on (blklot_ellis.petition = ellis_act_evictions.petition) where blklot_ellis.blk_lot IN(" + blk_lotParams.join(',') + ')',
+  blk_lots
+
+1 ellis_act_evictions
+  tied by blklot_ellis
+can cover
+2 address_blklot
+
+var ellises = dbQuery("select blklot_ellis.petition, units, landlord, date, protected, dirty_dozen, address, latitude::text || '|' || longitude::text AS loc from blklot_ellis JOIN ellis_act_evictions on (blklot_ellis.petition = ellis_act_evictions.petition) JOIN address_blklot on (blklot_ellis.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)",
+  []).then(function(result) {
+    var query_rows = result.rows
+    return _.groupBy(query_rows, "loc");
+  });
+
+  var omis = dbQuery("select blklot_omi.petition, unit, date, omi_evictions.address, address_blklot.address, latitude::text || '|' || longitude::text AS loc from blklot_omi JOIN omi_evictions on (blklot_omi.petition = omi_evictions.petition) join address_blklot on (blklot_omi.blk_lot = address_blklot.blk_lot) order by (address_blklot.latitude, address_blklot.longitude)",
+*/

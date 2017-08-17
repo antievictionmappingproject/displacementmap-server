@@ -4,13 +4,14 @@
   "description": "API server for the Anti-Eviction Mapping Project DB",
   "main": "app.js",
   "dependencies": {
-    "bookshelf": "^0.9.5",
-    "knex": "^0.11.5",
-    "pg": "~4.5.5",
-    "pg-query": "~0.11.0",
-    "q": "~1.4.1",
-    "restify": "~4.1.0",
-    "underscore": "~1.8.3"
+    "knex": "^0.13.0",
+    "objection": "^0.8.3",
+    "pg": "^6.4.0"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "test": "NODE_ENV=test node tests/tests.js | faucet",
+    "test:debug": "NODE_ENV=test node inspect tests/tests.js"
   },
   "repository": {
     "type": "git",
@@ -21,5 +22,11 @@
   "bugs": {
     "url": "https://github.com/antievictionmappingproject/displacementmap-server/issues"
   },
-  "homepage": "https://github.com/antievictionmappingproject/displacementmap-server"
+  "homepage": "https://github.com/antievictionmappingproject/displacementmap-server",
+  "devDependencies": {
+    "faucet": "0.0.1",
+    "tape": "^4.6.0",
+    "tape-catch": "^1.0.6",
+    "wtfnode": "^0.5.4"
+  }
 }

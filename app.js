@@ -1,5 +1,5 @@
 var restify = require('restify');
-var util = require('util')
+var util = require('util');
 var config = require('./config');
 var Q = require('q');
 var _ = require('underscore');
@@ -219,12 +219,15 @@ function property(req, res, next) {
   var st = query.st;
 
   if (num !== undefined && st !== undefined) {
+    // console.log('get by address')
     getByAddress(num, st, res);
   } else if (query.latLon) {
+    console.log('allEvictionsLatLonOnly')
     allEvictionsLatLonOnly.then(function (value) {
       res.send(value);
     }, dbError);
   } else {
+    console.log('allEvictions')
     allEvictions.then(function (value) {
       res.send(value);
     }, dbError);
