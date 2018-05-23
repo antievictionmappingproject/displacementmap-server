@@ -1,6 +1,9 @@
 displacementmap-server
 ======================
-api format: 
+### configuration
+Store config vars in the `./config` directory. See [node-config](https://github.com/lorenwest/node-config) for details. For example `default.json` and `production.json` in `./config`.
+
+api format:
 evictor:
 ```
 {
@@ -25,7 +28,7 @@ eviction:
 }
 ```
 
-property: 
+property:
 ```
 {
 	block-lot number: string
@@ -36,7 +39,7 @@ property:
 }
 ```
 
-has there been an eviction at this address? address string -> property 
+has there been an eviction at this address? address string -> property
 what evictions is someone connected to? name string -> evictor
 
 databyid for all

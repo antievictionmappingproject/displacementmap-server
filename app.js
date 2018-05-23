@@ -1,12 +1,13 @@
-var restify = require('restify');
-var util = require('util')
-var config = require('./config');
-var Q = require('q');
-var _ = require('underscore');
+const util = require('util'),
+      config = require('/config'),
+      Q = require('q'),
+      _ = require('underscore'),
+      pg = require('pg'),
+      configVars = [ 'user', 'pass', 'host', 'port', 'name' ],
+      [ user, pass, host, port, name ] = configVars.map(v => config.get(`db.${v}`)),
+      connString = `postgres://${user}:${pass}@${host}:${port}/${name}`,
+      pgClient = new pg.Client(connString);
 
-var pg = require('pg');
-connString = 'postgres://'+ config.db.user + ':' + config.db.pass + '@'+ config.db.host + ':' + config.db.port + '/' + config.db.name;
-var pgClient = new pg.Client(connString);
 pgClient.connect();
 
 function makePledge(req, res, next) {
