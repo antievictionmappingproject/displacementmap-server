@@ -1,5 +1,5 @@
 const util = require('util'),
-      config = require('/config'),
+      config = require('config'),
       Q = require('q'),
       _ = require('underscore'),
       pg = require('pg'),
@@ -315,10 +315,10 @@ app.post('/upload', auth, function (req, res, next) {
         }
     }
   });
-  require('rimraf')(__dirname + '/uploadedfiles/', function(){});
+  // require('rimraf')(__dirname + '/uploadedfiles/', function(){});
 });
 
-var pg = require('pg');
+
 var fs = require('fs');
 var GeoJSON = require('geojson');
 
@@ -395,7 +395,8 @@ function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage){
           return new Promise (function (resolve, reject) {
             let property_id;
             let address = jsonObj['Address'].toUpperCase();
-            pgClient.query("SELECT id FROM properties WHERE address = $1 AND blklot = $2 LIMIT 1", [address, jsonObj['Block Lot']],
+            // changed to select *
+            pgClient.query("SELECT * FROM properties WHERE address = $1 AND blklot = $2 LIMIT 1", [address, jsonObj['Block Lot']],
               function(err, result) {
                 if (err) {
                   errorMessage[rowNumber] = err;
@@ -578,7 +579,8 @@ function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
       let promiseToSelectPropertyID = function() {
         return new Promise(function (resolve, reject) {
           var address = jsonObj.address.toUpperCase();
-          pgClient.query("SELECT id FROM properties WHERE address = $1 LIMIT 1", [address],
+          // changed to select *
+          pgClient.query("SELECT * FROM properties WHERE address = $1 LIMIT 1", [address],
             function(err, result) {
               if (err) {
                 errorMessage[rowNumber] = err;

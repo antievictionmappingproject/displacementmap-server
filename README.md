@@ -43,3 +43,6 @@ has there been an eviction at this address? address string -> property
 what evictions is someone connected to? name string -> evictor
 
 databyid for all
+
+postgis
+CREATE EXTENSION postgis;
