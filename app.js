@@ -6,7 +6,14 @@ const util = require('util'),
       configVars = [ 'user', 'pass', 'host', 'port', 'name' ],
       [ user, pass, host, port, name ] = configVars.map(v => config.get(`db.${v}`)),
       connString = `postgres://${user}:${pass}@${host}:${port}/${name}`,
-      pgClient = new pg.Client(connString);
+      pgClient = new pg.Client(connString),
+      express    = require('express'),
+      fileUpload = require('express-fileupload'),
+      app        = express(),
+      csv = require('csvtojson'),
+      { to } = require('await-to-js'),
+      basicAuth = require('basic-auth'),
+      cors = require('cors');
 
 pgClient.connect();
 
@@ -209,9 +216,7 @@ function getByAddress(streetNumber, streetName, res) {
   }, dbError);
 }
 
-var express    = require('express'),
-fileUpload = require('express-fileupload');
-app        = express();
+
 
 // default options
 app.use(fileUpload());
@@ -224,52 +229,31 @@ app.use(function(req, res, next) {
   next();
 });
 
-var cors = require('cors');
 app.use(cors({credentials: false, origin: true}));
-var basicAuth = require('basic-auth');
-var auth = function (req, res, next) {
-  function unauthorized(res) {
-    res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
-    return res.status(401).send();
-  };
-  var user = basicAuth(req);
-  if (!user || !user.name || !user.pass) {
+
+const auth = async (req, res, next) => {
+  const user = basicAuth(req)
+  const [error, userExists] = await to(promiseToCheckUser(user.name, user.pass))
+  if (!user || !user.name || !user.pass || !userExists) {
     return unauthorized(res);
   };
-  promiseToCheckUser(user.name, user.pass).then(function(isExist) {
-    if (isExist) {
-      return next();
-    }
-    else {
-      return unauthorized(res);
-    }
-  });
+  return next();
 };
 
-let promiseToCheckUser = function(user, pass) {
-  return new Promise (function (resolve, reject) {
-    const csvFilePath = 'username_password.csv';
-    const csv = require('csvtojson');
-    var flag = false;
-    csv()
-      .fromFile(csvFilePath)
-        .on('json',(jsonObj, rowIndex)=>{
-        // combine csv header row and csv line to a json object
-        // jsonObj.a ==> 1 or 4
-        if (user == jsonObj.username && pass == jsonObj.password) {
-          flag = true;
-        }
-      })
-      .on('done',(error)=>{
-            resolve(flag);
-      })
-  });
+const promiseToCheckUser = async (user, pass) => {
+  const csvFilePath = 'username_password.csv'
+  let flag = false
+  const [error, result] = await to(csv().fromFile(csvFilePath))
+  if (error) return (error)
+  const { username, password } = result[0]
+  if (user === username && pass === password) flag = true
+  return flag
 }
 
 
 function IsExistUser(user, pass) {
+  debugger
   const csvFilePath = 'username_password.csv';
-  const csv = require('csvtojson');
   var flag = false;
   csv()
     .fromFile(csvFilePath)
@@ -286,35 +270,33 @@ function IsExistUser(user, pass) {
 }
 
 
-app.post('/upload', auth, function (req, res, next) {
+app.post('/upload', auth, async (req, res, next) => {
   req.setTimeout(300);
-  var sampleFile, uploadPath;
+  let sampleFile, uploadPath;
   if (!req.files) {
     res.status(400).send('No files were uploaded.');
     return;
   }
   sampleFile = req.files.sampleFile;
   if (sampleFile == undefined) {
-    res.status(500).send("The imported file is empty.");
-    return;
+    return res.status(500).send("The imported file is empty.");
   }
-  uploadPath = __dirname + '/uploadedfiles/' + sampleFile.name;
+  ProcessCSV(sampleFile, res, req.body.dryRun);
 
-  if (!fs.existsSync(__dirname + '/uploadedfiles/')){
-      fs.mkdirSync(__dirname + '/uploadedfiles/');
-  }
-  sampleFile.mv(uploadPath, function(err) {
-    if (err) {
-      res.status(400).send(err);
-    }
-    else {
-        if (GetExtension(sampleFile.name) !== 'CSV'){
-          res.status(500).send("The imported file is not of CSV type.");
-        } else {
-          ProcessCSV(sampleFile, uploadPath, sampleFile.name, res, req.body.dryRun);
-        }
-    }
-  });
+      // const fileString = sampleFile.data.toString()
+      // // csv.fromString(fileString)
+      // const [error, json] = await to(csv().fromString(fileString))
+      // .subscribe( json => {
+      //   debugger
+      // })
+      // .subscribe( json => {
+      //   debugger
+      // })
+
+
+      // debugger
+    //   ProcessCSV(sampleFile, uploadPath, sampleFile.name, res, req.body.dryRun);
+    // }
   // require('rimraf')(__dirname + '/uploadedfiles/', function(){});
 });
 
@@ -354,33 +336,51 @@ let schemaAddresses = {
 
  };
 
-function ProcessCSV(sampleFile, uploadPath, fileName, res, isDryRun) {
+const match = (fileName) => {
+  const functions = {
+    addresses: ProcessAddressRow,
+    evictions: ProcessTempEvictionRows,
+    owners: ProcessOwnerRows
+  }
+  const term = fileName.match(/(addresses|evictions|owners).*/)
+  const toUse = term[1]
+  return (term !== null && term.index === 0) ? function[toUse] : false
+}
 
-  var numberOfLines = sampleFile.data.toString().split('\n').length - 1;
-
-  if (fileName.match(/addresses.*/) !== null && fileName.match(/addresses.*/).index == 0) {
-   ProcessAddresses(uploadPath, res, isDryRun, numberOfLines);
+function sendMessage(errorMessage) {
+  if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
+    res.status(500).send(errorMessage);
   } else {
-    if (fileName.match(/evictions.*/) !== null && fileName.match(/evictions.*/).index == 0) {
-      ProcessTempEvictions(uploadPath, res, isDryRun, numberOfLines);
-    }
-    else {
-      if (fileName.match(/owners.*/) !== null && fileName.match(/owners.*/).index == 0) {
-        ProcessOwners(uploadPath, res, isDryRun, numberOfLines);
-      }
-      else {
-        res.status(500).send("Import file should start with one of the following names: addresses, evictions or owners. Please rename.");
-      }
-    }
+    res.status(200).send('The data was successfully parsed.');
   }
 }
 
-let schemaOwners = {
+const processByRow = (sampleFile, isDryRun, errorMessage) => {
+  const fileName = sampleFile.name,
+        fileString = sampleFile.data.toString(),
+        processRow = match(fileName)
+  if (processRow) {
+    return csv().fromString(fileString).subscribe( (json, index) => {
+      processRow(json, index + 2, isDryRun, errorMessage)
+    })
+  } else {
+    return Promise.reject("Import file should start with one of the following names: addresses, evictions or owners. Please rename.")
+  }
+}
 
+function ProcessCSV(sampleFile, res, isDryRun) {
+  const errorMessage = {},
+        converter = processByRow(sampleFile, isDryRun, errorMessage)
+
+  const [error, result] = await to(converter)
+  debugger
+  sendMessage(errorMessage);
+}
+
+const schemaOwners = {
     'owner_name': joi.string().required(),
     'address': joi.string().required(),
     'owner_mailing_address': joi.string().required(),
-
  };
 
 function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage){
@@ -539,35 +539,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
   }
 }
 
-// Add data to properties and owners tables.
-function ProcessAddresses(uploadPath, res, isDryRun, numberOfLines) {
-  const csvFilePath = String(uploadPath);
-  const csv = require('csvtojson');
-  var forEach = require('async-foreach').forEach;
-  errorMessage = {};
-  csv()
-    .fromFile(csvFilePath)
-      .on('end_parsed',(jsonArrObj)=>{
-        forEach(jsonArrObj, function(item, index, arr) {
-          ProcessAddressRow(item, index + 2, isDryRun, errorMessage);
-          var done = this.async()
-          setTimeout(function() {
-            done(index !== jsonArrObj.length - 1);
-          }, 500);
-        }, allDone)
-      })
-      // Generic "done" callback.
-    function allDone(err) {
-      sendMessage(errorMessage);
-    }
-    function sendMessage(errorMessage) {
-      if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
-        res.status(500).send(errorMessage);
-      } else {
-        res.status(200).send('The data was successfully parsed.');
-      }
-    }
-}
+
 
 function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
     var data = joi.validate(jsonObj, schemaOwners, {allowUnknown : true, abortEarly: false });
@@ -680,70 +652,6 @@ function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
       }
   }
 
-}
-
-function ProcessOwners(uploadPath, res, isDryRun, numberOfLines) {
-  const csvFilePath = String(uploadPath);
-  const csv = require('csvtojson');
-  var forEach = require('async-foreach').forEach;
-  errorMessage = {};
-  csv()
-    .fromFile(csvFilePath)
-      .on('end_parsed',(jsonArrObj)=>{
-        forEach(jsonArrObj, function(item, index, arr) {
-          ProcessOwnerRows(item, index + 2, isDryRun, errorMessage);
-          var done = this.async()
-          setTimeout(function() {
-            done(index !== jsonArrObj.length - 1);
-          }, 5000);
-        }, allDone)
-      })
-
-    // Generic "done" callback.
-  function allDone(err) {
-    sendMessage(errorMessage);
-  }
-
-  function sendMessage(errorMessage) {
-    if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
-      res.status(500).send(errorMessage);
-    } else {
-      res.status(200).send('The data was successfully parsed.');
-    }
-  }
-
-}
-
-// Add data to evictions table.
-function ProcessTempEvictions(uploadPath, res, isDryRun, numberOfLines) {
-  const csvFilePath = String(uploadPath);
-  const csv = require('csvtojson');
-  var forEach = require('async-foreach').forEach;
-  errorMessage = {};
-  csv()
-    .fromFile(csvFilePath)
-      .on('end_parsed',(jsonArrObj)=>{
-        forEach(jsonArrObj, function(item, index, arr) {
-          ProcessTempEvictionRows(item, index + 2, isDryRun, errorMessage);
-          var done = this.async()
-          setTimeout(function() {
-            done(index !== jsonArrObj.length - 1);
-          }, 500);
-        }, allDone)
-      })
-
-    // Generic "done" callback.
-  function allDone(err) {
-    sendMessage(errorMessage);
-  }
-
-  function sendMessage(errorMessage) {
-    if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
-      res.status(500).send(errorMessage);
-    } else {
-      res.status(200).send('The data was successfully parsed.');
-    }
-  }
 }
 
 function getDate() {
