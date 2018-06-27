@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>The Anti-Eviction Pledge</title>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-1.11.0.min.js"></script>
+    <script type="text/javascript" src="./javascripts/ellis.js"></script>
+    <script src="https://cdn.leafletjs.com/leaflet-0.7.2/leaflet.js"></script>
+    <link rel="stylesheet" href="./stylesheets/ellis.css"/>
+    <link rel="stylesheet" href="https://cdn.leafletjs.com/leaflet-0.7.2/leaflet.css" />
+    <link href="https://netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Oswald:400,700,300" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400,600,700,300" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css?family=Lusitana:400,700" rel="stylesheet" type="text/css">
+    <script type="text/javascript"
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDpsJsdaO4gra3Dby9lmESzthKQuhADmyM&sensor=false">
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta property="og:title"            content="Take a Stand. Make The Anti-Eviction Pledge." /> 
+    <meta property="og:site_name"            content="The Anti-Eviction Mapping Project" /> 
+    <meta property="og:url"            content="https://www.antievictionmappingproject.net/pledge/" /> 
+    <meta property="og:description"            content="San Francisco is in crisis. I pledged to help by not renting or buying property available because of a no-fault eviction. Step up and make the pledge too!" /> 
+        <meta property="og:image"            content="https://www.antievictionmappingproject.net/pledge/images/fbsplash.jpg" /> 
+     <meta name="twitter:card" content="summary">
+     <meta name="twitter:site" content="@antievictionmap">
+    <meta name="twitter:title" content="Take a Stand. Make The Anti-Eviction Pledge">
+    <meta name="twitter:description" content="San Francisco is in crisis. Step up and pledge to not rent or buy property available because of an eviction.">
+    <meta name="twitter:image:src" content="https://www.antievictionmappingproject.net/pledge/images/twsplash.jpg">
+    <meta name="twitter:domain" content="https://www.antievictionmap.com">
+	</head>
+<body>
+    <div id="main_menu" class="main_menu">
+        <div class="wrapNoMargin">
+            <a href="#" id="logo"><img src="images/pledge image.png" width="160" height="100" alt="Eviction Pledge logo" id="logoImage"></a>
+                <nav> 
+                    <ul>
+                        <a href="#" id="searchPledgelink"><li class="hideMobile">Look Up Eviction History &amp; Pledge</li></a>
+                        <a href="#" id="pledgeslink"><li class="hideMobile">See Who Pledged</li></a>
+                        <a href="#" id="learnMorelink"><li class="hideMobile">Learn More</li></a>
+                    </ul>
+                </nav>
+        </div>
+    </div>
+ <!--   <div class="scrollarea">-->
+ <div id="intro" class="background">
+            <div class="wrap">
+                <div id="blurb">
+                    <h1>San Francisco is in Crisis</h1>
+                    <p>Real-estate speculators are evicting longtime city residents. Many of the affected are <strong>elderly</strong>, <strong>disabled</strong> and <strong>low-income</strong> with no affordable housing options. <strong>You can help</strong>. Don't rent or buy property available because of a no-fault eviction.
+                    </p>
+
+                    <div class="buttonContainer">
+                        <p class="centered"><a href="#" class="CTA"><span class="hideMobile">Pledge to </span> Support Housing Justice</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="wrap" id="main_wrap">
+                <div class="mapSearch">
+                    <div id="search">
+                        <p class="search"><input id="address" type="text" placeholder="Enter an address"/><a class="link_txt" id="find_btn" tabindex="0">Find</a></p>
+                    </div>
+                    <div id="instructions" class="instructions">
+                        Enter an address to check its eviction history - Make sure to specify city.
+                    </div>
+<div id="mapper">&nbsp;</div>
+</div>
+<div id="searchPledge">
+<div class="right_bar">
+<div id="petition" class="petition">
+<h1>Take a Stand</h1>
+<p class="pledgeText">I pledge not to rent or buy any unit that is available as the result of a no-fault eviction.</p>
+<p class="label">First Name:</p>
+<input id="pt_firstname" class="pt_txt" type="text" placeholder="First Name" />
+<p class="label">Last Name:</p>
+<input id="pt_lastname" class="pt_txt" type="text" placeholder="Last Name" />
+<p class="label">Email:</p>
+<input id="pt_email" class="pt_txt" type="text" placeholder="Email" />
+<p class="expl">We'll never share your email without asking!</p>
+<p class="label">Why is this important to you?</p>
+<textarea id="pt_reason" class="pt_txtarea" cols="22" rows="5"></textarea>
+<p class="chk_label"><input id="pt_usable" checked="checked" name="use" type="checkbox" value="usable" />Show my name in the pledge list</p>
+<p class="centered"><a id="pet_link" class="pt_link"></a>&nbsp;I Support Housing Justice</p>
+</div>
+<div id="feedback" class="petition">
+<h1>Thank you!</h1>
+<h2 class="standUp">Help Spread the Word</h2>
+<div class="stw"><img id="fb_btn" src="images/fbsh.png" alt="" width="48" height="48" /><img id="tw_btn" src="images/twsh.png" alt="" width="48" height="48" /></div>
+<h2 class="standUp">Join Us</h2>
+<p><a href="https://antievictionmap.com/contact/">Contact the Anti-Eviction Mapping Project</a></p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div id="pledges">
+<div id="pledgeColumnWrapper" class="wrap">
+<h1>See Who Pledged</h1>
+<h2 id="pledge_total">0 people have pledged</h2>
+<div class="pledge_columns">
+<div id="pledgeColumn_1" class="pledgeColumn">
+<ul>
+<li>
+<p>Lorem I.</p>
+</li>
+</ul>
+</div>
+<div id="pledgeColumn_2" class="pledgeColumn hideMobile">
+<ul>
+<li>
+<p>Lorem I.</p>
+</li>
+</ul>
+</div>
+<div id="pledgeColumn_3" class="pledgeColumn hideMobile">
+<ul>
+<li>
+<p>Suntin C.</p>
+<p>At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="page_buttons">
+<div class="previous">
+<p><a id="back_btn"></a>&laquo; Back</p>
+</div>
+<div class="more">
+<p><a id="more_btn"></a>More &raquo;</p>
+</div>
+</div>
+</div>
+</div>
+<div id="learnMore">
+<div class="wrap">
+<div class="resources">
+<h2 class="dark">Resources</h2>
+<ul style="list-style-type: square;">
+<li><a href="https://sfadc.org" target="_blank">Anti-Displacement Coalition</a></li>
+<li><a href="https://urbanhabitat.org/regional-tenant-organizing-network" target="_blank">Regional Tenants Organizing Network</a></li>
+<li><a href="https://righttothecity.org" target="_blank">Right to the City Movement</a></li>
+<li><a href="https://www.sftu.org" target="_blank">The San Francisco Tenants Union</a></li>
+<li><a href="https://cjjc.org" target="_blank">Causa Justa : Just Cause</a></li>
+<li><a href="https://www.chinatowncdc.org/" target="_blank">Chinatown Community Development Center</a></li>
+<li><a href="https://hrcsf.org/en/" target="_blank">Housing Rights Committee of San Francisco</a></li>
+<li><a href="https://www.tenantstogether.org" target="_blank">Tenants Together</a></li>
+<li><a href="https://www.tenantstogether.org" target="_blank">Eviction Free San Francisco</a></li>
+</ul>
+</div>
+<div class="aboutus">
+<h2 class="dark">About Us</h2>
+<p>The <a title="AEMP" href="https://www.antievictionmap.com" target="_blank">Anti-Eviction Mapping Project</a>&nbsp;makes visible the ways in which evictions and gentrification target Bay Area communities. We use maps and digital storytelling to make the often invisible processes of eviction, displacement and gentrification clearly seen.</p>
+<p>The search on this site is powered by data from the <a href="https://www.sfrb.org/" target="_blank">San Francisco Rent Board</a>. If you have information about a no-fault eviction not shown here, <a href="mailto:antievictionmap@riseup.net" target="_blank">l</a><a title="Contact" href="https://antievictionmap.com/contact" target="_blank">et us know</a>.</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<div class="wrapNoMargin">
+  <p>&copy; 2018 // Presented by the <a title="AEMP" href="https://www.antievictiomap.com" target="_blank">Anti-Eviction Mapping Project</a></p>
+</div>
+</div>
+<!--</div>-->
+<script>// <![CDATA[
+(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-49882390-1', 'antievictionmappingproject.net');
+  ga('send', 'pageview');
+// ]]></script>
+</body>
+</html>
