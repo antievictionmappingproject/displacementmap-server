@@ -11,10 +11,10 @@ pgClient.connect();
 
 function makePledge(req, res, next) {
   //TODO: check for empty
-  if (!req.params || Object.keys(req.params).length === 0) {
+  var params = req.body;
+  if (!(params.firstName && params.lastName && params.email && params.reason)) {
     res.status(404).send("pledger info required");
   } else {
-    var params = req.params;
     var firstName = params.firstName || '';
     var lastName = params.lastName || '';
     var email = params.email || '';
@@ -104,9 +104,11 @@ function property(req, res, next) {
   var dbError = function(error){
     res.status(500).send(error);
   }
+
   var query = req.query;
   var num = query.num;
   var st = query.st;
+
   if (num !== undefined && st !== undefined) {
     getByAddress(num, st, res);
   } else if (query.latLon) {
@@ -177,20 +179,26 @@ function addEvictionsToPin(evictions, pin) {
 }
 
 function getByAddress(streetNumber, streetName, res) {
+
   var dbError = function(error){
     res.status(500).send(error);
   }
+
   // TBD: not working when street_type is empty for example in case '1400 BROADWAY'
   pgClient.query("SELECT id, address, latitude, longitude FROM properties WHERE (street::text || ' ' || st_type::text) = $1::text and addr_num = $2::integer",
     [streetName.toUpperCase().trim(),
     streetNumber.trim()]).then(function(result) {
+
       var query_rows = result.rows;
+
       if (query_rows.length > 0) {
         var addresses = query_rows.map(function(row) {
           return row.address;
         });
+
         var pin = {};
         pin.addresses = addresses.filter(distinct).sort();
+
         evictions = pgClient.query("SELECT distinct(evictions.petition), evictions.dirty_dozen, evictions.date, evictions.protected, evictions.eviction_type," +
                   "evictions.landlord, evictions.units, evictions.apt from evictions join properties on (properties.id = evictions.property_id)" +
                     " WHERE (properties.street:: text || ' ' || properties.st_type:: text) = $1::text and properties.addr_num = $2::integer",
@@ -199,9 +207,11 @@ function getByAddress(streetNumber, streetName, res) {
                         var query_rows = result.rows;
                         return processEvictions(query_rows);
       }, dbError);
+
         Q.all(evictions).then(function(evictionResults) {
                 res.send(addEvictionsToPin(evictionResults, pin));
               }, dbError);
+
       } else {
         res.status(404).send(error);
       }
@@ -225,16 +235,21 @@ app.use(function(req, res, next) {
 
 var cors = require('cors');
 app.use(cors({credentials: false, origin: true}));
+
 var basicAuth = require('basic-auth');
+
 var auth = function (req, res, next) {
   function unauthorized(res) {
     res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
     return res.status(401).send();
   };
+
   var user = basicAuth(req);
+
   if (!user || !user.name || !user.pass) {
     return unauthorized(res);
   };
+
   promiseToCheckUser(user.name, user.pass).then(function(isExist) {
     if (isExist) {
       return next();
@@ -286,7 +301,7 @@ function IsExistUser(user, pass) {
 
 
 app.post('/upload', auth, function (req, res, next) {
-  req.setTimeout(300);
+  req.setTimeout(0);
   var sampleFile, uploadPath;
   if (!req.files) {
     res.status(400).send('No files were uploaded.');
@@ -375,11 +390,9 @@ function ProcessCSV(sampleFile, uploadPath, fileName, res, isDryRun) {
 }
 
 let schemaOwners = {
-
     'owner_name': joi.string().required(),
     'address': joi.string().required(),
     'owner_mailing_address': joi.string().required(),
-
  };
 
 function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage){
@@ -467,14 +480,17 @@ function getNumberOfLines(sampleFile, filePath, callback) {
 
 
 function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
+
   var data = joi.validate(jsonObj, schemaEvictions, { abortEarly: false });
   if (data.error) {
     errorMessage[rowNumber] = data.error.details;
   } else {
+
     let isDry = (isDryRun == 'true');
     let address = modifyAddress(jsonObj['address']);
     let date =  jsonObj['date'];
     let property_id;
+
     let selectPropertyId = function(callback) {
       return new Promise (function (resolve, reject) {
         pgClient.query("SELECT id FROM properties WHERE addr_num = $1 AND street = $2 LIMIT 1", [getAddressNumber(address), getAddressStreet(address)],
@@ -494,6 +510,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
         });
       });
     }
+
     let checkIfNotExistEviction = function(property_id) {
       return new Promise (function (resolve, reject) {
         pgClient.query("SELECT * FROM evictions WHERE petition = $1 AND date = $2 AND property_id = $3 LIMIT 1", [jsonObj['petition'], jsonObj['date'], property_id],
@@ -512,6 +529,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
         });
       });
     }
+
     let insertEviction = function(property_id) {
       if (! isDry) {
         let arr = [];
@@ -527,6 +545,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
         });
       }
     }
+
     selectPropertyId().then(function(property_id){
       checkIfNotExistEviction(property_id).then(function() {
         insertEviction(property_id);
@@ -539,6 +558,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
 
 // Add data to properties and owners tables.
 function ProcessAddresses(uploadPath, res, isDryRun, numberOfLines) {
+
   const csvFilePath = String(uploadPath);
   const csv = require('csvtojson');
   var forEach = require('async-foreach').forEach;
@@ -554,10 +574,12 @@ function ProcessAddresses(uploadPath, res, isDryRun, numberOfLines) {
           }, 500);
         }, allDone)
       })
+
       // Generic "done" callback.
     function allDone(err) {
       sendMessage(errorMessage);
     }
+
     function sendMessage(errorMessage) {
       if (! (Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
         res.status(500).send(errorMessage);
@@ -574,6 +596,7 @@ function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
     } else {
       var isDry = (isDryRun == 'true');
       var property_id;
+
       let promiseToSelectPropertyID = function() {
         return new Promise(function (resolve, reject) {
           var address = jsonObj.address.toUpperCase();
@@ -881,10 +904,6 @@ function getEvictionTypes(evictionType) {
   // Development - Development Agreement
   // Good Samaritan Ends - Good Samaritan Tenancy Ends
   var eviction = evictionType.toUpperCase();
-/*  var array = ["NON-PAYMENT OF RENT", "BREACH OF LEASE AGREEMENT", "NUISANCE", "ILLEGAL USE OF UNIT", "FAILURE TO SIGN LEASE RENEWAL", "DENIAL OF ACCESS TO UNIT",
-              "UNAPPROVED SUBTENANT", "OWNER MOVE IN", "OMI", "DEMOLITION", "CAPITAL IMPROVEMENT", "SUBSTANTIAL REHABILITATION", "ELLIS ACT WITHDRAWAL",
-              "ELLIS", "CONDO CONVERSION", "ROMMATE LIVING IN SAME UNIT", "OTHER", "HABITUAL LATE PAYMENT OF RENT", "LEAD REMEDIATION", "DEVELOPMENT AGREEMENT",
-              "GOOD SAMARITAN TENANCY ENDS"];*/
 
   var obj = {"NON-PAYMENT OF RENT": "Non Payment", "BREACH": "Breach", "BREACH OF LEASE AGREEMENT": "Breach", "NUISANCE": "Nuisance", "ILLEGAL USE OF UNIT": "Illegal Use",
           "FAILURE TO SIGN LEASE RENEWAL": 'Failure to Sign Renewal', "DENIAL OF ACCESS TO UNIT": "Access Denial", "UNAPPROVED SUBTENANT": "Unapproved Subtenant",
