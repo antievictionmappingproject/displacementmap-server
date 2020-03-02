@@ -24,7 +24,7 @@
     "pg": "^6.0.0",
     "pg-query": "^0.10.1",
     "q": "^1.0.1",
-    "restify": "^2.6.3",
+    "restify": "^8.5.1",
     "rimraf": "^2.6.2",
     "underscore": "^1.6.0",
     "nodemailer": "^3.0.2"
