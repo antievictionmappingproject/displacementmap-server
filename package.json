@@ -19,7 +19,7 @@
     "joi-json": "^2.0.1",
     "jsonwebtoken": "~8.1.0",
     "latest-version": "^2.0.0",
-    "mongoose": "~4.13.7",
+    "mongoose": "~5.9.2",
     "morgan": "~1.9.0",
     "pg": "^6.0.0",
     "pg-query": "^0.10.1",
