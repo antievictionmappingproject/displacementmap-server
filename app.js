@@ -233,11 +233,9 @@ function addEvictionsToPin(evictions, pin) {
         var protected_tenants = Math.max.apply(null, protected_tenants_array);
         pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
         pin.evictions = allEvictions;
-
         var dirtyDozen = evictions.filter(function (eviction) {
             return eviction.dirty_dozen;
         });
-
         if (dirtyDozen.length > 0) {
             pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
         }
@@ -316,9 +314,7 @@ var auth = function (req, res, next) {
 
     if (!user || !user.name || !user.pass) {
         return unauthorized(res);
-    }
-    ;
-
+    };
     promiseToCheckUser(user.name, user.pass).then(function (isExist) {
         if (isExist) {
             return next();
@@ -327,7 +323,6 @@ var auth = function (req, res, next) {
         }
     });
 };
-
 let promiseToCheckUser = function (user, pass) {
     return new Promise(function (resolve, reject) {
         const csvFilePath = 'username_password.csv';
@@ -348,7 +343,6 @@ let promiseToCheckUser = function (user, pass) {
     });
 }
 
-
 function IsExistUser(user, pass) {
     const csvFilePath = 'username_password.csv';
     const csv = require('csvtojson');
@@ -367,9 +361,6 @@ function IsExistUser(user, pass) {
         })
 }
 
-
-
-// app.post('/upload',auth, function (req, res, next) {
 app.post('/upload', function (req, res, next) {
     req.setTimeout(0);
     var sampleFile, uploadPath;
@@ -466,8 +457,6 @@ let schemaOwners = {
     'address': joi.string().required(),
     'owner_mailing_address': joi.string().allow(''),
 };
-
-
 function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage) {
     var data = joi.validate(jsonObj, schemaAddresses, {abortEarly: false});
     if (data.error) {
@@ -1011,9 +1000,6 @@ app.get('/pledges', getPledges);
 app.post('/login', login);
 app.post('/search', search);
 app.get('/pledges/total', getPledgeTotal);
-
-
-//
 app.listen(process.env.PORT || 8888, function () {
     console.log('Express server listening on port ', process.env.PORT || 8888);
 })
