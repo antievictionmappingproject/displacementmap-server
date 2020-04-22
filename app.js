@@ -4,6 +4,8 @@ var config = require('./config');
 var Q = require('q');
 var _ = require('underscore');
 
+
+
 var pg = require('pg');
 connString = 'postgres://' + config.db.user + ':' + config.db.pass + '@' + config.db.host + ':' + config.db.port + '/' + config.db.name;
 var pgClient = new pg.Client(connString);
@@ -60,15 +62,14 @@ function makePledge(req, res, next) {
         var mailOptions = {
             from: 'aemp.mailsender@gmail.com',
             to: 'aemp.mailsender@gmail.com',
-            subject: 'subject',
-            text: 'text node coment'
-        };
+            subject: 'New pledge is added',
+            html: '<p>Hello,</p>  <p> This is to inform that new pledge is just added to the http://www.antievictionmappingproject.net/pledge/ website.</p>  <p> Below are the details:</p>  <p>First Name: '+firstName+'</p><p> Last Name: '+lastName+'</p> <p>Email: '+email+'</p><p> Reason: '+reason+'</p><p> Please login to Admin portal to enable the pledge.</p> <p>  Best Regards,</p><p> Webmaster</p>'
+    };
         transporter.sendMail(mailOptions, function(error, info){
             if (error) {
                 console.log(error);
             }
         });
-
     }
 }
 
@@ -101,8 +102,8 @@ function constructPledge(anonymous, first_name, last_name, reason, timestamp,sta
 function getPledges(req, res, next) {
     var limit = parseInt(req.query.limit);
     var skip = parseInt(req.query.skip);
-    pgClient.query("select first_name, last_name, reason, anonymous, pledge_timestamp,status from pledges order by pledge_timestamp desc OFFSET $2 LIMIT $1 ",
-        [limit, skip],
+    pgClient.query("select first_name, last_name, reason, anonymous, pledge_timestamp,status from pledges where status=$3 order by pledge_timestamp desc OFFSET $2 LIMIT $1   ",
+        [limit, skip,1],
         function (err, results) {
             if (err) {
                 res.status(500).send(err);
@@ -114,6 +115,40 @@ function getPledges(req, res, next) {
             }
         });
 }
+
+function search(req, res, next) {
+    var search = req.body.input_value;
+    if(search=='null' || search=='undefined'){
+        pgClient.query("select * from pledges  where first_name is null or  email is null or reason is null ",
+            [],
+            function (err, results) {
+                if (err) {
+                    // console.log(err)
+                    res.status(500).send(err);
+                } else {
+                    var pledges = results.rows.map(function (row) {
+                        return constructPledge_ad(row.id, row.first_name, row.last_name, row.reason, row.email, row.anonymous, row.pledge_timestamp, row.status);
+                    });
+                    res.send(pledges);
+                }
+            });
+    }else {
+        pgClient.query("select * from pledges  where upper(first_name) LIKE upper('%' || $1 || '%') or  upper(email) like upper('%' || $1 || '%') or  upper(reason) like upper('%' || $1 || '%') order by pledge_timestamp desc ",
+            [search],
+            function (err, results) {
+                if (err) {
+                    // console.log(err)
+                    res.status(500).send(err);
+                } else {
+                    var pledges = results.rows.map(function (row) {
+                        return constructPledge_ad(row.id, row.first_name, row.last_name, row.reason, row.email, row.anonymous, row.pledge_timestamp, row.status);
+                    });
+                    res.send(pledges);
+                }
+            });
+    }
+}
+
 
 function getPledgeTotal(req, res, next) {
     pgClient.query("select count(*) from pledges where status='1'",
@@ -198,11 +233,9 @@ function addEvictionsToPin(evictions, pin) {
         var protected_tenants = Math.max.apply(null, protected_tenants_array);
         pin.protected_tenants = (protected_tenants > 0) ? protected_tenants : '?';
         pin.evictions = allEvictions;
-
         var dirtyDozen = evictions.filter(function (eviction) {
             return eviction.dirty_dozen;
         });
-
         if (dirtyDozen.length > 0) {
             pin.dirty_dozen = dirtyDozen[0].dirty_dozen;
         }
@@ -281,9 +314,7 @@ var auth = function (req, res, next) {
 
     if (!user || !user.name || !user.pass) {
         return unauthorized(res);
-    }
-    ;
-
+    };
     promiseToCheckUser(user.name, user.pass).then(function (isExist) {
         if (isExist) {
             return next();
@@ -292,7 +323,6 @@ var auth = function (req, res, next) {
         }
     });
 };
-
 let promiseToCheckUser = function (user, pass) {
     return new Promise(function (resolve, reject) {
         const csvFilePath = 'username_password.csv';
@@ -313,7 +343,6 @@ let promiseToCheckUser = function (user, pass) {
     });
 }
 
-
 function IsExistUser(user, pass) {
     const csvFilePath = 'username_password.csv';
     const csv = require('csvtojson');
@@ -332,17 +361,16 @@ function IsExistUser(user, pass) {
         })
 }
 
-
-app.post('/upload', auth, function (req, res, next) {
+app.post('/upload', function (req, res, next) {
     req.setTimeout(0);
     var sampleFile, uploadPath;
     if (!req.files) {
-        res.status(400).send('No files were uploaded.');
+        res.status(400).send('ERROR: No file was selected for upload.');
         return;
     }
     sampleFile = req.files.sampleFile;
     if (sampleFile == undefined) {
-        res.status(500).send("The imported file is empty.");
+        res.status(500).send("ERROR: The file is empty.");
         return;
     }
     uploadPath = __dirname + '/uploadedfiles/' + sampleFile.name;
@@ -356,7 +384,7 @@ app.post('/upload', auth, function (req, res, next) {
         }
         else {
             if (GetExtension(sampleFile.name) !== 'CSV'){
-                res.status(500).send("The imported file is not of CSV type.");
+                res.status(500).send("ERROR: Unknown file type.");
             } else {
                 ProcessCSV(sampleFile, uploadPath, sampleFile.name, res, req.body.dryRun);
             }
@@ -418,7 +446,7 @@ function ProcessCSV(sampleFile, uploadPath, fileName, res, isDryRun) {
                 ProcessOwners(uploadPath, res, isDryRun, numberOfLines);
             }
             else {
-                res.status(500).send("Import file should start with one of the following names: addresses, evictions or owners. Please rename.");
+                res.status(500).send("ERROR: Wrong file name.");
             }
         }
     }
@@ -428,10 +456,7 @@ let schemaOwners = {
     'owner_name': joi.string().required(),
     'address': joi.string().required(),
     'owner_mailing_address': joi.string().allow(''),
-
 };
-
-
 function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage) {
     var data = joi.validate(jsonObj, schemaAddresses, {abortEarly: false});
     if (data.error) {
@@ -449,7 +474,7 @@ function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage) {
                             reject(errorMessage);
                         } else {
                             if (result.rows.length > 0) {
-                                errorMessage[rowNumber] = "There is a property registered with " + jsonObj['Block Lot'] + " blklot and " + jsonObj['Address'] + " address.";
+                                errorMessage[rowNumber] ="Property  with " + jsonObj['Block Lot'] + " blklot and " + jsonObj['Address'] + " address is already registered. Skipping update for this row";
                                 reject(errorMessage);
                             }else {
                                 resolve();
@@ -461,7 +486,6 @@ function ProcessAddressRow(jsonObj, rowNumber, isDryRun, errorMessage) {
 
         let insertToProperty = function () {
             if (!isDry) {
-                console.log(jsonObj['Block Lot'] + " 9999999");
                 pgClient.query("INSERT INTO properties(blklot, street, st_type, addr_n_sfx, addr_num, address, latitude, longitude, unit_num, zipcode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
                     [jsonObj['Block Lot'], jsonObj['Street Name'], jsonObj['Street Type'], jsonObj['Address Number Suffix'], jsonObj['Address Number'], jsonObj['Address'], jsonObj['Latitude'], jsonObj['Longitude'], jsonObj['Unit Number'], jsonObj['Zipcode']],
                     function (err, query_rows, results) {
@@ -507,9 +531,9 @@ let schemaEvictions = {
     'ACS Housing/Ownership of occupied units/Renter occupied/Percentage': joi.allow('').required(),
     'ACS Housing/Median value of owner-occupied housing units/Total/Value': joi.allow('').required(),
     'serial evictor y/n': joi.string().allow('').required(),
-    'field24': joi.string().allow('').required(),
-    'field25': joi.string().allow('').required(),
-    'field26': joi.string().allow('').required(),
+    'field24': joi.string().allow(''),
+    'field25': joi.string().allow(''),
+    'field26': joi.string().allow(''),
 };
 
 function getNumberOfLines(sampleFile, filePath, callback) {
@@ -551,7 +575,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
                                 property_id = result.rows[0].id;
                                 resolve(property_id);
                             } else {
-                                errorMessage[rowNumber] = jsonObj['address'] + " address is not found in properties table. Please import it into addresses.csv file first.";
+                                errorMessage[rowNumber] =  jsonObj['address'] + " address is not found in properties table. Please import it into addresses.csv file first. Skipping update for this row.";
                                 reject(errorMessage);
                             }
                         }
@@ -568,7 +592,7 @@ function ProcessTempEvictionRows(jsonObj, rowNumber, isDryRun, errorMessage){
                             reject(errorMessage);
                         } else {
                             if (result.rows.length > 0){
-                                errorMessage[rowNumber] = "There is an eviction registered for " + jsonObj['address'] + ' and ' + jsonObj['date'] + " date.";
+                                errorMessage[rowNumber] = "Eviction for " + jsonObj['address'] + ' address and ' + jsonObj['date'] + " date is already registered. Skipping update for this row.";
                                 reject(errorMessage);
 
                             } else {
@@ -623,17 +647,15 @@ function ProcessAddresses(uploadPath, res, isDryRun, numberOfLines) {
                 }, 500);
             }, allDone)
         })
-
     // Generic "done" callback.
     function allDone(err) {
         sendMessage(errorMessage);
     }
-
     function sendMessage(errorMessage) {
         if (!(Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
             res.status(500).send(errorMessage);
         } else {
-            res.status(200).send('The data was successfully parsed.');
+            res.status(200).send('The data were successfully added to DataBase.');
         }
     }
 }
@@ -660,7 +682,7 @@ function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
                                 resolve(result.rows[0].id);
                             }
                             else {
-                                errorMessage[rowNumber] = "The " +  jsonObj.address + " address is not found in properties table. Please import it into addresses.csv file first.";
+                                errorMessage[rowNumber] = "The " +  jsonObj.address + " address is not found in properties table. Please import it into addresses.csv file first. Skipping update for this row";
                                 reject(errorMessage);
                             }
                         }
@@ -700,7 +722,7 @@ function ProcessOwnerRows(jsonObj, rowNumber, isDryRun, errorMessage){
                             reject(errorMessage);
                         } else {
                             if (result.rows.length  > 0){
-                                errorMessage[rowNumber] = jsonObj['owner_name'] + " is registered for " + jsonObj['address'] + " address.";
+                                errorMessage[rowNumber] =  jsonObj['owner_name'] + " is already registered for " + jsonObj['address'] + " address. Skipping update for this row.";
                                 reject(errorMessage);
                             }
                             else {
@@ -781,7 +803,7 @@ function ProcessOwners(uploadPath, res, isDryRun, numberOfLines) {
         if (!(Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
             res.status(500).send(errorMessage);
         } else {
-            res.status(200).send('The data was successfully parsed.');
+            res.status(200).send('The data were successfully added to DataBase/');
         }
     }
 
@@ -814,7 +836,7 @@ function ProcessTempEvictions(uploadPath, res, isDryRun, numberOfLines) {
         if (!(Object.keys(errorMessage).length === 0 && errorMessage.constructor === Object)) {
             res.status(500).send(errorMessage);
         } else {
-            res.status(200).send('The data was successfully parsed.');
+            res.status(200).send('The data were successfully added to DataBase.');
         }
     }
 }
@@ -976,11 +998,12 @@ app.get('/properties', property);
 app.post('/pledges', makePledge);
 app.get('/pledges', getPledges);
 app.post('/login', login);
+app.post('/search', search);
 app.get('/pledges/total', getPledgeTotal);
-
 app.listen(process.env.PORT || 8888, function () {
     console.log('Express server listening on port ', process.env.PORT || 8888);
 })
+
 
 function distinct(value, index, self) {
     return self.indexOf(value) === index;
